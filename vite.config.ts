@@ -5,6 +5,7 @@ import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  base: process.env.NODE_ENV === 'production' ? '/Calico-Demo/' : '/', // Update 'Calico-Demo' to match your GitHub repo name
   server: {
     host: "::",
     port: 8080,
