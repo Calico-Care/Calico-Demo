@@ -3,45 +3,22 @@
   <head>
     <meta charset="utf-8">
     <title>Calico Care</title>
-    <script>
-      // Single Page Apps for GitHub Pages
-      // https://github.com/rafgraph/spa-github-pages
-      // This script takes the current url and converts the path and query
-      // string into just a query string, and then redirects the browser
-      // to the new url with only a query string and hash fragment,
-      // e.g., https://www.foo.tld/one/two?a=b&c=d#qwe, becomes
-      // https://www.foo.tld/?/one/two&a=b~and~c=d#qwe
-      // Note: this 404.html file must be at least 512 bytes for it to work
-      // with Internet Explorer (it is currently > 512 bytes)
-
-      // If you're creating a Project Pages site and NOT using a custom domain,
-      // then set pathSegmentsToKeep to 1 (enterprise users may need to set it to > 1).
-      // This way the code will only replace the route name and not the repository name.
-      // For example, if your repository name is 'my-repo', and you're visiting
-      // https://organization-name.github.io/my-repo/one/two?a=b&c=d#qwe,
-      // then the pathSegmentsToKeep should be 1, and the redirect will be:
-      // https://organization-name.github.io/my-repo/?/one/two&a=b~and~c=d#qwe
-      // If you're using a custom domain, then set pathSegmentsToKeep to 0.
-      var pathSegmentsToKeep = 1;
-
-      var l = window.location;
-      l.replace(
-        l.protocol +
-          "//" +
-          l.hostname +
-          (l.port ? ":" + l.port : "") +
-          l.pathname
-            .split("/")
-            .slice(0, 1 + pathSegmentsToKeep)
-            .join("/") +
-          "/?/" +
-          l.pathname.slice(1).split("/").slice(pathSegmentsToKeep).join("/").replace(/&/g, "~and~") +
-          (l.search ? "&" + l.search.slice(1).replace(/&/g, "~and~") : "") +
-          l.hash
-      );
+    <script type="text/javascript">
+      // Redirect to index.html for HashRouter
+      var path = window.location.pathname;
+      // Remove trailing slash and get the base path
+      var basePath = path.replace(/\/$/, '') || '/';
+      // If we're at the root, redirect to /Calico-Demo/index.html
+      // Otherwise, redirect to the base path + index.html
+      if (path === '/' || path === '/Calico-Demo/' || path.endsWith('/Calico-Demo')) {
+        window.location.replace('/Calico-Demo/index.html');
+      } else {
+        window.location.replace(basePath + '/index.html');
+      }
     </script>
   </head>
   <body>
+    <p>Redirecting...</p>
   </body>
 </html>
 
