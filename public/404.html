@@ -2,23 +2,28 @@
 <html>
   <head>
     <meta charset="utf-8">
+    <meta http-equiv="refresh" content="0; url=/Calico-Demo/index.html#/login">
     <title>Calico Care</title>
     <script type="text/javascript">
-      // Redirect to index.html for HashRouter
+      // Immediate redirect to index.html for HashRouter
+      // This handles both root path and 404 errors
       var path = window.location.pathname;
-      // Remove trailing slash and get the base path
-      var basePath = path.replace(/\/$/, '') || '/';
-      // If we're at the root, redirect to /Calico-Demo/index.html
-      // Otherwise, redirect to the base path + index.html
-      if (path === '/' || path === '/Calico-Demo/' || path.endsWith('/Calico-Demo')) {
-        window.location.replace('/Calico-Demo/index.html');
+      var hash = window.location.hash || '';
+      
+      // Always redirect to index.html at the base path
+      if (path === '/' || path === '/Calico-Demo/' || path.includes('/Calico-Demo')) {
+        // Preserve hash if it exists, otherwise redirect to login
+        if (!hash) {
+          hash = '#/login';
+        }
+        window.location.replace('/Calico-Demo/index.html' + hash);
       } else {
-        window.location.replace(basePath + '/index.html');
+        window.location.replace('/Calico-Demo/index.html#/login');
       }
     </script>
   </head>
   <body>
-    <p>Redirecting...</p>
+    <p>Redirecting to Calico Care... <a href="/Calico-Demo/index.html#/login">Click here if not redirected</a></p>
   </body>
 </html>
 

@@ -18,9 +18,9 @@ const Index = () => {
     const authToken = localStorage.getItem("authToken");
     if (!authToken) {
       navigate("/login");
-    } else {
-      setIsAuthenticated(true);
+      return;
     }
+    setIsAuthenticated(true);
     setIsLoading(false);
   }, [navigate]);
 

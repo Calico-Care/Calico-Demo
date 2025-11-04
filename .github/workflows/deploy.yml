@@ -38,6 +38,14 @@ jobs:
           VITE_VAPI_PHONE_NUMBER_ID: ${{ secrets.VITE_VAPI_PHONE_NUMBER_ID }}
         run: npm run build
 
+      - name: List build output
+        run: |
+          echo "=== Build output structure ==="
+          ls -la dist/
+          echo ""
+          echo "=== index.html content (first 20 lines) ==="
+          head -20 dist/index.html || echo "index.html not found"
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 

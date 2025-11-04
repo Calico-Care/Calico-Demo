@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +34,7 @@ const Login = () => {
   const [currentFeature, setCurrentFeature] = useState(0);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const navigate = useNavigate();
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -47,7 +49,7 @@ const Login = () => {
     // Static login for now - will connect to backend later
     if (email && password) {
       localStorage.setItem("authToken", "demo-token");
-      window.location.href = "/";
+      navigate("/");
     }
   };
 
