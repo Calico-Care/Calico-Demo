@@ -32,6 +32,7 @@ jobs:
 
       - name: Build
         env:
+          NODE_ENV: production
           VITE_VAPI_API_KEY: ${{ secrets.VITE_VAPI_API_KEY }}
           VITE_VAPI_ASSISTANT_ID: ${{ secrets.VITE_VAPI_ASSISTANT_ID }}
           VITE_VAPI_PHONE_NUMBER_ID: ${{ secrets.VITE_VAPI_PHONE_NUMBER_ID }}
