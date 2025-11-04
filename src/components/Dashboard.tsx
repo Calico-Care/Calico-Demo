@@ -13,10 +13,10 @@ import {
   Users, 
   Activity,
   TrendingUp,
-  Weight,
   Brain,
-  X
+  X,
 } from "lucide-react";
+import { patientStore } from "@/store/mockData";
 
 const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -31,6 +31,7 @@ const Dashboard = () => {
 
     return () => clearTimeout(timer);
   }, []);
+
 
   const handleMetricClick = (metricTitle: string) => {
     setSelectedMetric(metricTitle);
@@ -101,7 +102,7 @@ const Dashboard = () => {
     },
     {
       title: "Enrolled Seniors",
-      value: 61,
+      value: patientStore.getAll().length,
       icon: Users,
       color: "yellow" as const,
       trend: { current: 5, target: 10 },
@@ -114,13 +115,6 @@ const Dashboard = () => {
       color: "yellow" as const,
       trend: { current: 3, target: 8 },
       tooltip: "Alerts that are still being investigated or resolved. Track progress on ongoing issues."
-    },
-    {
-      title: "Weight Trends",
-      value: "—",
-      icon: Weight,
-      color: "gray" as const,
-      tooltip: "Overall weight trend analysis across all seniors. Stable trends indicate good nutritional health."
     },
     {
       title: "Caregiver Triage Trend",
@@ -185,8 +179,13 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-gray-100">
       <div className="max-w-7xl mx-auto p-6 space-y-6">
+        <div className="mt-6">
+          <h2 className="text-2xl font-bold mb-2">Program Metrics</h2>
+          <p className="text-muted-foreground">Track overall program performance and alerts</p>
+        </div>
+        
         {/* Metrics Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4">
           {metricsData.map((metric, index) => (
             <MetricCard
               key={index}

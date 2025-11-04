@@ -10,7 +10,7 @@ interface ProgressIndicatorProps {
 const ProgressIndicator = ({ currentStep, totalSteps, steps }: ProgressIndicatorProps) => {
   return (
     <div className="w-full mb-8">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-center gap-4">
         {steps.map((step, index) => {
           const stepNumber = index + 1;
           const isCompleted = stepNumber < currentStep;
@@ -18,10 +18,10 @@ const ProgressIndicator = ({ currentStep, totalSteps, steps }: ProgressIndicator
           
           return (
             <div key={step} className="flex items-center">
-              <div className="flex flex-col items-center">
+              <div className="flex flex-col items-center" style={{ minWidth: '140px' }}>
                 <div
                   className={cn(
-                    "w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all",
+                    "w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all mx-auto",
                     {
                       "bg-primary border-primary text-primary-foreground": isCompleted,
                       "bg-primary/10 border-primary text-primary": isActive,
@@ -36,7 +36,7 @@ const ProgressIndicator = ({ currentStep, totalSteps, steps }: ProgressIndicator
                   )}
                 </div>
                 <span className={cn(
-                  "mt-2 text-sm font-medium",
+                  "mt-2 text-sm font-medium text-center",
                   {
                     "text-primary": isActive,
                     "text-foreground": isCompleted,
@@ -48,7 +48,7 @@ const ProgressIndicator = ({ currentStep, totalSteps, steps }: ProgressIndicator
               </div>
               {index < steps.length - 1 && (
                 <div className={cn(
-                  "flex-1 h-0.5 mx-4 transition-all",
+                  "w-16 h-0.5 transition-all",
                   {
                     "bg-primary": isCompleted,
                     "bg-border": !isCompleted,

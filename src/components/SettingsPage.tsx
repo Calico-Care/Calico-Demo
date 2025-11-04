@@ -421,86 +421,6 @@ const SettingsPage = () => {
     </div>
   );
 
-  const AlexaManagement = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-2xl font-semibold">Alexa Management</h3>
-        <p className="text-muted-foreground">Configure and manage Alexa device connections for patient communication</p>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Mic className="w-5 h-5" />
-            Connected Alexa Devices
-          </CardTitle>
-          <CardDescription>Manage Alexa devices linked to patient accounts</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {[
-              { patient: "Robert Smith", device: "Echo Dot (Living Room)", status: "Online", lastActive: "2 hours ago" },
-              { patient: "Mary Johnson", device: "Echo Show (Kitchen)", status: "Online", lastActive: "30 minutes ago" },
-              { patient: "James Wilson", device: "Echo (Bedroom)", status: "Offline", lastActive: "1 day ago" }
-            ].map((device, index) => (
-              <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center space-x-4">
-                  <div className={`w-3 h-3 rounded-full ${device.status === "Online" ? "bg-green-500" : "bg-red-500"}`}></div>
-                  <div>
-                    <p className="font-medium">{device.patient}</p>
-                    <p className="text-sm text-muted-foreground">{device.device}</p>
-                    <p className="text-xs text-muted-foreground">Last active: {device.lastActive}</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Badge variant={device.status === "Online" ? "default" : "secondary"}>
-                    {device.status}
-                  </Badge>
-                  <Button variant="outline" size="sm">Test Connection</Button>
-                  <Button variant="outline" size="sm">
-                    <Settings className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Alexa Configuration</CardTitle>
-          <CardDescription>Configure global Alexa settings and permissions</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <Label>Enable Drop-In Feature</Label>
-              <p className="text-sm text-muted-foreground">Allow caregivers to drop-in on patient devices</p>
-            </div>
-            <Switch />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <Label>Auto-Answer Video Calls</Label>
-              <p className="text-sm text-muted-foreground">Automatically answer incoming video calls from care team</p>
-            </div>
-            <Switch defaultChecked />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <Label>Emergency Contact Priority</Label>
-              <p className="text-sm text-muted-foreground">Priority routing for emergency communications</p>
-            </div>
-            <Switch defaultChecked />
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto p-6">
@@ -512,14 +432,13 @@ const SettingsPage = () => {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 mb-8">
+          <TabsList className="grid w-full grid-cols-3 mb-8">
             <TabsTrigger value="user-settings">User Settings</TabsTrigger>
             <TabsTrigger value="care-team">Manage Care Team</TabsTrigger>
             <TabsTrigger value="invitations" className="relative">
               Manage Invitations
               <Badge variant="destructive" className="ml-2 text-xs">23</Badge>
             </TabsTrigger>
-            <TabsTrigger value="alexa-management">Alexa Management</TabsTrigger>
           </TabsList>
 
           <TabsContent value="user-settings">
@@ -532,10 +451,6 @@ const SettingsPage = () => {
 
           <TabsContent value="invitations">
             <InvitationManagement />
-          </TabsContent>
-
-          <TabsContent value="alexa-management">
-            <AlexaManagement />
           </TabsContent>
         </Tabs>
       </div>
