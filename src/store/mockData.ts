@@ -52,17 +52,70 @@ export interface VAPICallSchedule {
   isActive: boolean;
 }
 
+export interface VAPIRecommendedAction {
+  owner: "care-team" | "patient" | "family" | "automation";
+  action: string;
+  urgency: "low" | "medium" | "high";
+  dueBy?: string | null;
+}
+
+export interface VAPIEndOfCallReport {
+  patientId: string;
+  patientName: string;
+  callPurpose: string;
+  conversationOutcome: "completed" | "voicemail" | "no-answer" | "rescheduled" | "unknown";
+  summary: string;
+  riskLevel: "low" | "moderate" | "high";
+  symptomsDiscussed: string[];
+  medicationAdherence: "on-track" | "missed-dose" | "not-discussed" | "stopped";
+  escalationNeeded: boolean;
+  followUpType: "none" | "call" | "visit" | "escalate";
+  recommendedActions: VAPIRecommendedAction[];
+  notes?: string;
+}
+
+export interface VAPICallTranscriptEntry {
+  role: string;
+  message: string;
+  time?: number;
+}
+
+export interface VAPICallArtifacts {
+  recording?: string;
+  logUrl?: string;
+  transcriptUrl?: string;
+}
+
+export interface VAPICallAnalysis {
+  summary?: string;
+  structuredData?: VAPIEndOfCallReport | Record<string, unknown>;
+  successEvaluation?:
+    | {
+        result?: string;
+        rubric?: string;
+        score?: number;
+        notes?: string;
+      }
+    | Record<string, unknown>;
+}
+
+export type VAPICallStatus = "pending" | "in-progress" | "completed" | "failed";
+
 export interface VAPICall {
   id: string;
   patientId: string;
   promptId: string;
   scheduleId?: string;
   phoneNumber: string;
-  status: "pending" | "in-progress" | "completed" | "failed";
+  providerCallId?: string;
+  status: VAPICallStatus;
   startedAt?: Date;
   completedAt?: Date;
   duration?: number; // in seconds
   transcript?: string;
+  transcriptEntries?: VAPICallTranscriptEntry[];
+  artifacts?: VAPICallArtifacts;
+  analysis?: VAPICallAnalysis;
   createdAt: Date;
 }
 

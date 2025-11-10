@@ -14,7 +14,9 @@ import {
   Heart,
   Check,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -56,6 +58,7 @@ import {
   type VAPICallSchedule,
   type VAPICall,
   type RecurrenceType,
+  type VAPIEndOfCallReport,
 } from "@/store/mockData";
 import { vapiService, VAPI_CONFIG } from "@/services/vapiService";
 import {
@@ -95,6 +98,16 @@ const formatPhoneToE164 = (phone: string): string => {
 
   // Default: assume US number and add +1
   return `+1${digits}`;
+};
+
+const isEndOfCallReport = (
+  value: unknown
+): value is VAPIEndOfCallReport => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  return "conversationOutcome" in value && "summary" in value;
 };
 const getCallStatusBadge = (status: VAPICall["status"]) => {
   const statusConfig = {
@@ -175,6 +188,7 @@ const VAPIPage = () => {
   const [isScheduleCallOpen, setIsScheduleCallOpen] = useState(false);
   const [selectedPrompt, setSelectedPrompt] = useState<VAPIPrompt | null>(null);
   const [callingPromptId, setCallingPromptId] = useState<string | null>(null);
+  const [refreshingCallId, setRefreshingCallId] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -250,6 +264,29 @@ const VAPIPage = () => {
       });
     } finally {
       setCallingPromptId(null);
+    }
+  };
+
+  const handleRefreshCallReport = async (callId: string) => {
+    if (!selectedPatient) return;
+
+    setRefreshingCallId(callId);
+    try {
+      await vapiService.refreshCallDetails(callId);
+      setCallHistory(vapiCallStore.getByPatientId(selectedPatient.id));
+      toast({
+        title: "Report synced",
+        description: "Latest transcript and end-of-call report have been fetched.",
+      });
+    } catch (error) {
+      toast({
+        title: "Sync failed",
+        description:
+          error instanceof Error ? error.message : "Unable to fetch call details.",
+        variant: "destructive",
+      });
+    } finally {
+      setRefreshingCallId(null);
     }
   };
 
@@ -671,6 +708,8 @@ const VAPIPage = () => {
                             key={call.id}
                             call={call}
                             prompts={prompts}
+                            onRefresh={() => handleRefreshCallReport(call.id)}
+                            isRefreshing={refreshingCallId === call.id}
                           />
                         ))}
                       </div>
@@ -1301,16 +1340,26 @@ const ScheduleCard = ({
 const CallHistoryCard = ({
   call,
   prompts,
+  onRefresh,
+  isRefreshing,
 }: {
   call: VAPICall;
   prompts: VAPIPrompt[];
+  onRefresh: () => void;
+  isRefreshing: boolean;
 }) => {
   const prompt = prompts.find((p) => p.id === call.promptId);
+  const report = isEndOfCallReport(call.analysis?.structuredData)
+    ? (call.analysis?.structuredData as VAPIEndOfCallReport)
+    : undefined;
+  const transcriptPreview = call.transcriptEntries?.slice(0, 40);
+  const isTranscriptTruncated =
+    (call.transcriptEntries?.length || 0) > (transcriptPreview?.length || 0);
 
   return (
     <Card>
-      <CardContent className="pt-6">
-        <div className="flex items-center justify-between">
+      <CardContent className="pt-6 space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <h3 className="font-semibold text-gray-900">
@@ -1322,8 +1371,181 @@ const CallHistoryCard = ({
               {call.duration && ` • Duration: ${call.duration}s`}
             </p>
           </div>
-          {getCallStatusBadge(call.status)}
+          <div className="flex items-center gap-2">
+            {call.providerCallId && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onRefresh}
+                disabled={isRefreshing}
+              >
+                {isRefreshing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Sync report
+                  </>
+                )}
+              </Button>
+            )}
+            {getCallStatusBadge(call.status)}
+          </div>
         </div>
+
+        {call.analysis?.summary && (
+          <div className="text-sm text-gray-600">
+            <p className="font-semibold text-gray-900">Summary</p>
+            <ReactMarkdown className="mt-1 space-y-2 rounded-md border bg-white/70 p-3 text-sm leading-relaxed text-gray-800">
+              {call.analysis.summary}
+            </ReactMarkdown>
+          </div>
+        )}
+
+        {report && (
+          <div className="rounded-lg border bg-gray-50 p-4 text-sm text-gray-600">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-gray-500">
+                  Outcome
+                </p>
+                <p className="font-medium text-gray-900">
+                  {report.conversationOutcome}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-gray-500">
+                  Risk level
+                </p>
+                <p className="font-medium text-gray-900">{report.riskLevel}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-gray-500">
+                  Follow-up
+                </p>
+                <p className="font-medium text-gray-900">
+                  {report.followUpType}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-gray-500">
+                  Escalation needed
+                </p>
+                <p className="font-medium text-gray-900">
+                  {report.escalationNeeded ? "Yes" : "No"}
+                </p>
+              </div>
+            </div>
+            {report.symptomsDiscussed?.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs uppercase tracking-wide text-gray-500">
+                  Symptoms discussed
+                </p>
+                <p className="font-medium text-gray-900">
+                  {report.symptomsDiscussed.join(", ")}
+                </p>
+              </div>
+            )}
+            {report.recommendedActions?.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs uppercase tracking-wide text-gray-500">
+                  Recommended actions
+                </p>
+                <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-700">
+                  {report.recommendedActions.map((action, index) => (
+                    <li key={`${action.owner}-${index}`}>
+                      <span className="font-medium">{action.owner}</span>:{" "}
+                      {action.action} ({action.urgency})
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {report.notes && (
+              <p className="mt-3 text-gray-700">
+                <span className="font-medium">Notes:</span> {report.notes}
+              </p>
+            )}
+          </div>
+        )}
+
+        {call.analysis?.successEvaluation && (
+          <div>
+            <p className="text-sm font-semibold text-gray-900">
+              Success evaluation
+            </p>
+            <pre className="mt-2 max-h-40 overflow-y-auto rounded-md border bg-gray-50 p-3 text-xs text-gray-700">
+              {JSON.stringify(call.analysis.successEvaluation, null, 2)}
+            </pre>
+          </div>
+        )}
+
+        {transcriptPreview?.length ? (
+          <div>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-gray-900">Transcript</p>
+              {isTranscriptTruncated && (
+                <p className="text-xs text-gray-500">
+                  Showing first {transcriptPreview.length} turns
+                </p>
+              )}
+            </div>
+            <div className="mt-1 max-h-56 space-y-1 overflow-y-auto rounded-md border bg-gray-50 p-3 text-xs font-mono leading-relaxed text-gray-800">
+              {transcriptPreview.map((entry, index) => (
+                <p key={`${entry.role}-${index}`}>
+                  <span className="text-gray-500 uppercase">
+                    {entry.role || "speaker"}:
+                  </span>{" "}
+                  {entry.message}
+                </p>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {call.artifacts &&
+          (call.artifacts.recording ||
+            call.artifacts.logUrl ||
+            call.artifacts.transcriptUrl) && (
+            <div className="text-sm text-gray-600">
+              <p className="font-semibold text-gray-900">Artifacts</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {call.artifacts.recording && (
+                  <a
+                    href={call.artifacts.recording}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-md border px-3 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                  >
+                    Recording
+                  </a>
+                )}
+                {call.artifacts.transcriptUrl && (
+                  <a
+                    href={call.artifacts.transcriptUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-md border px-3 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                  >
+                    Full transcript
+                  </a>
+                )}
+                {call.artifacts.logUrl && (
+                  <a
+                    href={call.artifacts.logUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-md border px-3 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                  >
+                    Call logs
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
       </CardContent>
     </Card>
   );
