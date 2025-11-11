@@ -1,20 +1,17 @@
 // VAPI Service for making API calls to VAPI
 
-import {
-  vapiPromptStore,
-  vapiScheduleStore,
-  vapiCallStore,
-  replacePromptVariables,
-  patientStore,
-  type VAPIPrompt,
-  type VAPICallSchedule,
-  type VAPICall,
-  type RecurrenceType,
-  type Patient,
-  type VAPIEndOfCallReport,
-  type VAPICallAnalysis,
-  type VAPICallTranscriptEntry,
-} from "@/store/mockData";
+import { replacePromptVariables } from "@/lib/prompts";
+import { patientRepository } from "@/lib/repositories/patients";
+import { vapiRepository } from "@/lib/repositories/vapi";
+import type {
+  Patient,
+  RecurrenceType,
+  VAPICall,
+  VAPICallAnalysis,
+  VAPICallSchedule,
+  VAPICallTranscriptEntry,
+  VAPIEndOfCallReport,
+} from "@/lib/types";
 
 // Configuration - these should be set from environment variables or settings
 export const VAPI_CONFIG = {
@@ -354,9 +351,6 @@ interface VapiCallDetailsResponse extends VAPICallResponse {
   analysis?: VapiCallAnalysisResponse;
 }
 
-// Store original prompt outside the service object
-let originalPrompt: string | null = null;
-
 export const vapiService = {
   /**
    * Get the current assistant to save the original prompt
@@ -414,34 +408,30 @@ export const vapiService = {
    * Overrides the assistant's prompt for this specific call without modifying the assistant
    */
   async createCall(params: CreateCallParams): Promise<VAPICall> {
-    const patient = patientStore.getById(params.patientId);
-    const prompt = vapiPromptStore.getById(params.promptId);
+    const patient = await patientRepository.getById(params.patientId);
+    const prompt = await vapiRepository.getPromptById(params.promptId);
 
     if (!patient || !prompt) {
       throw new Error("Patient or prompt not found");
     }
 
-    // Replace variables in prompt
     const resolvedPrompt = replacePromptVariables(prompt.prompt, patient);
 
     try {
-      // Get the assistant to preserve its model configuration
       const assistant = await this.getAssistant();
       if (!assistant || !assistant.model) {
         throw new Error("Failed to fetch assistant configuration");
       }
 
-      // Extract provider and model from assistant to keep everything the same
       const modelProvider = assistant.model.provider || "openai";
       const modelName = assistant.model.model || "gpt-4o-mini";
       const analysisPlan = buildAnalysisPlan(patient, prompt.name);
       const artifactPlan = buildArtifactPlan(patient);
 
-      // Make the call with assistantOverrides to override the prompt for this call only
       const response = await fetch(`${VAPI_CONFIG.baseUrl}/call`, {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${VAPI_CONFIG.apiKey}`,
+          Authorization: `Bearer ${VAPI_CONFIG.apiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -450,8 +440,6 @@ export const vapiService = {
           customer: {
             number: params.phoneNumber,
           },
-          // Override the assistant's model messages for this call only
-          // Keep everything else exactly the same as the assistant
           assistantOverrides: {
             model: {
               provider: modelProvider,
@@ -471,31 +459,24 @@ export const vapiService = {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `API call failed with status ${response.status}`);
+        throw new Error(
+          errorData.message || `API call failed with status ${response.status}`
+        );
       }
 
       const data: VAPICallResponse = await response.json();
       const status = mapApiStatusToLocal(data.status);
 
-      // Create call record in mock store
-      const call = vapiCallStore.create({
+      return vapiRepository.createCall({
         patientId: params.patientId,
         promptId: params.promptId,
         phoneNumber: params.phoneNumber,
-        status,
         providerCallId: data.id,
+        status,
+        startedAt: status === "in-progress" ? new Date() : undefined,
       });
-
-      if (status === "in-progress") {
-        vapiCallStore.update(call.id, {
-          startedAt: new Date(),
-        });
-      }
-
-      return call;
     } catch (error) {
-      // Create failed call record
-      const call = vapiCallStore.create({
+      await vapiRepository.createCall({
         patientId: params.patientId,
         promptId: params.promptId,
         phoneNumber: params.phoneNumber,
@@ -512,16 +493,14 @@ export const vapiService = {
    * Actual scheduling is disabled - only "Call Now" initiates real calls.
    */
   async scheduleCall(params: ScheduleCallParams): Promise<VAPICallSchedule> {
-    const patient = patientStore.getById(params.patientId);
-    const prompt = vapiPromptStore.getById(params.promptId);
+    const patient = await patientRepository.getById(params.patientId);
+    const prompt = await vapiRepository.getPromptById(params.promptId);
     
     if (!patient || !prompt) {
       throw new Error("Patient or prompt not found");
     }
 
-    // For demo purposes, we only create local schedule records
-    // No actual API calls are made for scheduling
-    const schedule = vapiScheduleStore.create({
+    return vapiRepository.createSchedule({
       patientId: params.patientId,
       promptId: params.promptId,
       type: params.type,
@@ -530,22 +509,19 @@ export const vapiService = {
       recurrenceEndDate: params.recurrenceEndDate,
       dayOfWeek: params.dayOfWeek,
       dayOfMonth: params.dayOfMonth,
-      isActive: true,
     });
-
-    return schedule;
   },
 
   /**
    * Cancel a scheduled call
    */
   async cancelSchedule(scheduleId: string): Promise<boolean> {
-    const schedule = vapiScheduleStore.getById(scheduleId);
+    const schedule = await vapiRepository.getScheduleById(scheduleId);
     if (!schedule) {
       return false;
     }
 
-    vapiScheduleStore.update(scheduleId, { isActive: false });
+    await vapiRepository.deactivateSchedule(scheduleId);
     return true;
   },
 
@@ -553,14 +529,15 @@ export const vapiService = {
    * Get call status
    */
   async getCallStatus(callId: string): Promise<VAPICall | undefined> {
-    return vapiCallStore.getById(callId);
+    const call = await vapiRepository.getCallById(callId);
+    return call ?? undefined;
   },
 
   /**
    * Fetches the latest transcript, artifacts, and analysis for a call
    */
   async refreshCallDetails(callId: string): Promise<VAPICall | undefined> {
-    const localCall = vapiCallStore.getById(callId);
+    const localCall = await vapiRepository.getCallById(callId);
     if (!localCall) {
       throw new Error("Call not found");
     }
@@ -591,7 +568,7 @@ export const vapiService = {
     const transcriptInfo = extractTranscriptFromArtifact(data.artifact);
     const incomingAnalysis = mapApiAnalysis(data.analysis);
 
-    return vapiCallStore.update(callId, {
+    return vapiRepository.updateCall(callId, {
       status: mapApiStatusToLocal(data.status),
       startedAt: data.startedAt ? new Date(data.startedAt) : localCall.startedAt,
       completedAt: data.completedAt
@@ -599,8 +576,7 @@ export const vapiService = {
         : localCall.completedAt,
       duration:
         typeof data.duration === "number" ? data.duration : localCall.duration,
-      transcriptEntries:
-        transcriptInfo.entries ?? localCall.transcriptEntries,
+      transcriptEntries: transcriptInfo.entries ?? localCall.transcriptEntries,
       transcript: transcriptInfo.formatted ?? localCall.transcript,
       analysis: mergeAnalysis(localCall.analysis, incomingAnalysis),
       artifacts: {
@@ -610,25 +586,6 @@ export const vapiService = {
           data.artifact?.transcriptUrl ?? localCall.artifacts?.transcriptUrl,
       },
     });
-  },
-
-  /**
-   * Create a prompt for a patient
-   */
-  createPrompt(patientId: string, name: string, prompt: string): VAPIPrompt {
-    return vapiPromptStore.create({
-      patientId,
-      name,
-      prompt,
-      isActive: true,
-    });
-  },
-
-  /**
-   * Delete a prompt
-   */
-  deletePrompt(promptId: string): boolean {
-    return vapiPromptStore.delete(promptId);
   },
 };
 

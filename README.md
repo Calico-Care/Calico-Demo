@@ -60,6 +60,25 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Supabase setup
+
+The dashboard now persists data in Supabase (patients, prompts, schedules, call logs, and health metrics) and relies on Supabase Auth for login. Get started by:
+
+1. **Environment variables**
+   - Add the following to your `.env` file (values come from the Supabase project):
+     - `NEXT_PUBLIC_SUPABASE_URL`
+     - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+     - `SUPABASE_SERVICE_ROLE_KEY` (or set `SUPABASE_ACCESS_TOKEN` to a service role key for local scripts)
+     - Existing `VITE_VAPI_*` keys still power VAPI calls.
+2. **Apply the schema**
+   - Open the SQL Editor and run `supabase/migrations/20251111165256_init_schema.sql` (or run `supabase db push`) to create the tables, indexes, and RLS policies.
+3. **(New) Allow demo access**
+   - Run `supabase db push` so the latest migration (`20250105140300_open_access_policies.sql`) relaxes RLS and lets the anon key read/write during demos.
+4. **Seed sample data (optional)**
+   - Run `npm run seed:supabase` to upsert the original mock patients/metrics using the service role key.
+4. **Authentication**
+   - Use Supabase Auth email/password accounts to log in through `/login`. The React app listens to Supabase session events and automatically redirects on sign-in/out.
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/93500489-381b-4b7a-b59f-f38c2b76d9c7) and click on Share -> Publish.

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -16,12 +17,20 @@ import {
   Brain,
   X,
 } from "lucide-react";
-import { patientStore } from "@/store/mockData";
+import { patientRepository } from "@/lib/repositories/patients";
 
 const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const {
+    data: patients = [],
+    isLoading: patientsLoading,
+    error: patientsError,
+  } = useQuery({
+    queryKey: ["patients"],
+    queryFn: () => patientRepository.list(),
+  });
 
   useEffect(() => {
     // Simulate loading data
@@ -68,6 +77,7 @@ const Dashboard = () => {
     }
   };
 
+  const enrolledCount = patients.length;
   const metricsData = [
     {
       title: "Alerts",
@@ -102,7 +112,7 @@ const Dashboard = () => {
     },
     {
       title: "Enrolled Seniors",
-      value: patientStore.getAll().length,
+      value: enrolledCount,
       icon: Users,
       color: "yellow" as const,
       trend: { current: 5, target: 10 },
@@ -134,7 +144,7 @@ const Dashboard = () => {
     }
   ];
 
-  if (isLoading) {
+  if (isLoading || patientsLoading) {
     return (
       <div className="min-h-screen bg-gray-100 p-6">
         <div className="max-w-7xl mx-auto space-y-6">
@@ -182,6 +192,11 @@ const Dashboard = () => {
         <div className="mt-6">
           <h2 className="text-2xl font-bold mb-2">Program Metrics</h2>
           <p className="text-muted-foreground">Track overall program performance and alerts</p>
+          {patientsError ? (
+            <p className="text-sm text-red-600 mt-2">
+              Unable to load patient count: {patientsError.message}
+            </p>
+          ) : null}
         </div>
         
         {/* Metrics Grid */}

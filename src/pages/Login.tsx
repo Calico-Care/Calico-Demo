@@ -44,13 +44,17 @@ const Login = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Static login for now - will connect to backend later
-    if (email && password) {
-      localStorage.setItem("authToken", "demo-token");
+  useEffect(() => {
+    const token = localStorage.getItem("authToken");
+    if (token) {
       navigate("/");
     }
+  }, [navigate]);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    localStorage.setItem("authToken", "demo-token");
+    navigate("/");
   };
 
   const feature = features[currentFeature];

@@ -1,14 +1,15 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Check } from "lucide-react";
+import { ChevronLeft, ChevronRight, Check, Loader2 } from "lucide-react";
 import ProgressIndicator from "./ProgressIndicator";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { patientStore } from "@/store/mockData";
-import type { PrimaryCondition } from "@/store/mockData";
+import { patientRepository } from "@/lib/repositories/patients";
+import type { PrimaryCondition } from "@/lib/types";
 
 const formatPhoneNumber = (value: string): string => {
   // Remove all non-digit characters
@@ -52,17 +53,19 @@ const EnrollmentContainer = () => {
     primaryCondition: "",
   });
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleNext = () => {
+  const handleNext = async () => {
+    if (isSaving) return;
     if (currentStep < steps.length) {
       setCurrentStep(currentStep + 1);
     } else {
-      // Create patient
-      handleCompleteEnrollment();
+      await handleCompleteEnrollment();
     }
   };
 
-  const handleCompleteEnrollment = () => {
+  const handleCompleteEnrollment = async () => {
     // Validate required fields
     if (!formData.firstName || !formData.lastName || !formData.email || 
         !formData.birthMonth || !formData.birthDay || !formData.birthYear || 
@@ -82,35 +85,49 @@ const EnrollmentContainer = () => {
       parseInt(formData.birthDay)
     );
 
-    // Create patient in mock store
-    const patient = patientStore.create({
-      firstName: formData.firstName,
-      lastName: formData.lastName,
-      email: formData.email,
-      phone: formData.phone || undefined,
-      dateOfBirth,
-      timeZone: formData.timeZone || undefined,
-      primaryCondition: formData.primaryCondition as PrimaryCondition,
-    });
+    setIsSaving(true);
+    try {
+      const patient = await patientRepository.create({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        phone: formData.phone || undefined,
+        dateOfBirth,
+        timeZone: formData.timeZone || undefined,
+        primaryCondition: formData.primaryCondition as PrimaryCondition,
+      });
 
-    toast({
-      title: "Patient Enrolled!",
-      description: `${patient.firstName} ${patient.lastName} has been successfully enrolled in CalicoCare.`,
-    });
+      toast({
+        title: "Patient Enrolled!",
+        description: `${patient.firstName} ${patient.lastName} has been successfully enrolled in CalicoCare.`,
+      });
 
-    // Reset form
-    setFormData({
-      firstName: "",
-      lastName: "",
-      email: "",
-      phone: "",
-      birthMonth: "",
-      birthDay: "",
-      birthYear: "",
-      timeZone: "",
-      primaryCondition: "",
-    });
-    setCurrentStep(1);
+      await queryClient.invalidateQueries({ queryKey: ["patients"] });
+
+      setFormData({
+        firstName: "",
+        lastName: "",
+        email: "",
+        phone: "",
+        birthMonth: "",
+        birthDay: "",
+        birthYear: "",
+        timeZone: "",
+        primaryCondition: "",
+      });
+      setCurrentStep(1);
+    } catch (error) {
+      toast({
+        title: "Enrollment failed",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Unable to enroll patient right now.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handlePrevious = () => {
@@ -386,12 +403,22 @@ const EnrollmentContainer = () => {
 
           <Button
             onClick={handleNext}
-            disabled={!canProceed()}
+            disabled={!canProceed() || isSaving}
             className="flex items-center space-x-2 bg-gradient-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <span>{currentStep === steps.length ? "Complete Enrollment" : "Next"}</span>
+            <span>
+              {currentStep === steps.length
+                ? isSaving
+                  ? "Enrolling..."
+                  : "Complete Enrollment"
+                : "Next"}
+            </span>
             {currentStep === steps.length ? (
-              <Check className="w-4 h-4" />
+              isSaving ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )
             ) : (
               <ChevronRight className="w-4 h-4" />
             )}

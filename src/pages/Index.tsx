@@ -14,18 +14,19 @@ const Index = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check if user is authenticated (simulate checking local storage or token)
-    const authToken = localStorage.getItem("authToken");
-    if (!authToken) {
+    const token = localStorage.getItem("authToken");
+    if (token) {
+      setIsAuthenticated(true);
+    } else {
+      setIsAuthenticated(false);
       navigate("/login");
-      return;
     }
-    setIsAuthenticated(true);
     setIsLoading(false);
   }, [navigate]);
 
   const handleLogout = () => {
     localStorage.removeItem("authToken");
+    setIsAuthenticated(false);
     navigate("/login");
   };
 

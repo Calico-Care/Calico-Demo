@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Search,
   Phone,
@@ -47,19 +48,17 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import {
-  patientStore,
-  vapiPromptStore,
-  vapiScheduleStore,
-  vapiCallStore,
-  PRESET_PROMPT_TEMPLATE,
-  type Patient,
-  type VAPIPrompt,
-  type VAPICallSchedule,
-  type VAPICall,
-  type RecurrenceType,
-  type VAPIEndOfCallReport,
-} from "@/store/mockData";
+import { PRESET_PROMPT_TEMPLATE } from "@/lib/prompts";
+import type {
+  Patient,
+  VAPIPrompt,
+  VAPICallSchedule,
+  VAPICall,
+  RecurrenceType,
+  VAPIEndOfCallReport,
+} from "@/lib/types";
+import { patientRepository } from "@/lib/repositories/patients";
+import { vapiRepository } from "@/lib/repositories/vapi";
 import { vapiService, VAPI_CONFIG } from "@/services/vapiService";
 import {
   format,
@@ -178,43 +177,53 @@ const PROMPT_TEMPLATES = [
 ];
 
 const VAPIPage = () => {
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [prompts, setPrompts] = useState<VAPIPrompt[]>([]);
-  const [schedules, setSchedules] = useState<VAPICallSchedule[]>([]);
-  const [callHistory, setCallHistory] = useState<VAPICall[]>([]);
   const [isCreatePromptOpen, setIsCreatePromptOpen] = useState(false);
   const [isScheduleCallOpen, setIsScheduleCallOpen] = useState(false);
   const [selectedPrompt, setSelectedPrompt] = useState<VAPIPrompt | null>(null);
   const [callingPromptId, setCallingPromptId] = useState<string | null>(null);
   const [refreshingCallId, setRefreshingCallId] = useState<string | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const patientsQuery = useQuery({
+    queryKey: ["patients"],
+    queryFn: () => patientRepository.list(),
+  });
+
+  const patients = patientsQuery.data ?? [];
 
   useEffect(() => {
-    loadPatients();
-  }, []);
-
-  useEffect(() => {
-    if (selectedPatient) {
-      loadPatientData();
+    if (!selectedPatientId && patients.length > 0) {
+      setSelectedPatientId(patients[0].id);
     }
-  }, [selectedPatient]);
+  }, [patients, selectedPatientId]);
 
-  const loadPatients = () => {
-    setPatients(patientStore.getAll());
-  };
+  const selectedPatient =
+    patients.find((patient) => patient.id === selectedPatientId) ?? null;
 
-  const loadPatientData = () => {
-    if (!selectedPatient) return;
+  const promptsQuery = useQuery({
+    queryKey: ["vapi", "prompts", selectedPatientId],
+    queryFn: () => vapiRepository.listPrompts(selectedPatientId!),
+    enabled: Boolean(selectedPatientId),
+  });
 
-    // Load existing prompts - no auto-creation
-    const existingPrompts = vapiPromptStore.getByPatientId(selectedPatient.id);
+  const schedulesQuery = useQuery({
+    queryKey: ["vapi", "schedules", selectedPatientId],
+    queryFn: () => vapiRepository.listSchedules(selectedPatientId!),
+    enabled: Boolean(selectedPatientId),
+  });
 
-    setPrompts(existingPrompts);
-    setSchedules(vapiScheduleStore.getByPatientId(selectedPatient.id));
-    setCallHistory(vapiCallStore.getByPatientId(selectedPatient.id));
-  };
+  const callsQuery = useQuery({
+    queryKey: ["vapi", "calls", selectedPatientId],
+    queryFn: () => vapiRepository.listCalls(selectedPatientId!),
+    enabled: Boolean(selectedPatientId),
+  });
+
+  const prompts = promptsQuery.data ?? [];
+  const schedules = schedulesQuery.data ?? [];
+  const callHistory = callsQuery.data ?? [];
 
   const filteredPatients = patients.filter((patient) =>
     `${patient.firstName} ${patient.lastName}`
@@ -222,21 +231,33 @@ const VAPIPage = () => {
       .includes(searchTerm.toLowerCase())
   );
 
-  const handleCreatePrompt = (name: string, promptTemplate: string) => {
+  const handleCreatePrompt = async (name: string, promptTemplate: string) => {
     if (!selectedPatient) return;
 
-    const prompt = vapiService.createPrompt(
-      selectedPatient.id,
-      name,
-      promptTemplate
-    );
-
-    setPrompts([...prompts, prompt]);
-    setIsCreatePromptOpen(false);
-    toast({
-      title: "Prompt Created",
-      description: `Prompt "${name}" has been created for ${selectedPatient.firstName} ${selectedPatient.lastName}.`,
-    });
+    try {
+      await vapiRepository.createPrompt({
+        patientId: selectedPatient.id,
+        name,
+        prompt: promptTemplate,
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["vapi", "prompts", selectedPatient.id],
+      });
+      setIsCreatePromptOpen(false);
+      toast({
+        title: "Prompt Created",
+        description: `Prompt "${name}" has been created for ${selectedPatient.firstName} ${selectedPatient.lastName}.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Prompt Error",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Unable to create prompt right now.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleCallNow = async (promptId: string) => {
@@ -245,12 +266,14 @@ const VAPIPage = () => {
     setCallingPromptId(promptId);
     try {
       const e164Phone = formatPhoneToE164(selectedPatient.phone || "");
-      const call = await vapiService.createCall({
+      await vapiService.createCall({
         patientId: selectedPatient.id,
         promptId,
         phoneNumber: e164Phone,
       });
-      setCallHistory([call, ...callHistory]);
+      await queryClient.invalidateQueries({
+        queryKey: ["vapi", "calls", selectedPatient.id],
+      });
       toast({
         title: "Call Initiated",
         description: `Calling ${selectedPatient.firstName} ${selectedPatient.lastName} now...`,
@@ -273,7 +296,9 @@ const VAPIPage = () => {
     setRefreshingCallId(callId);
     try {
       await vapiService.refreshCallDetails(callId);
-      setCallHistory(vapiCallStore.getByPatientId(selectedPatient.id));
+      await queryClient.invalidateQueries({
+        queryKey: ["vapi", "calls", selectedPatient.id],
+      });
       toast({
         title: "Report synced",
         description: "Latest transcript and end-of-call report have been fetched.",
@@ -303,18 +328,20 @@ const VAPIPage = () => {
     try {
       if (type === "now") {
         const e164Phone = formatPhoneToE164(selectedPatient.phone || "");
-        const call = await vapiService.createCall({
+        await vapiService.createCall({
           patientId: selectedPatient.id,
           promptId,
           phoneNumber: e164Phone,
         });
-        setCallHistory([call, ...callHistory]);
+        await queryClient.invalidateQueries({
+          queryKey: ["vapi", "calls", selectedPatient.id],
+        });
         toast({
           title: "Call Initiated",
           description: `Calling ${selectedPatient.firstName} ${selectedPatient.lastName} now...`,
         });
       } else {
-        const schedule = await vapiService.scheduleCall({
+        await vapiService.scheduleCall({
           patientId: selectedPatient.id,
           promptId,
           type,
@@ -323,7 +350,9 @@ const VAPIPage = () => {
           recurrenceEndDate,
           dayOfWeek,
         });
-        setSchedules([...schedules, schedule]);
+        await queryClient.invalidateQueries({
+          queryKey: ["vapi", "schedules", selectedPatient.id],
+        });
         toast({
           title: "Call Scheduled",
           description: `Call has been scheduled for ${selectedPatient.firstName} ${selectedPatient.lastName}.`,
@@ -341,15 +370,29 @@ const VAPIPage = () => {
   };
 
   const handleAddPresetPrompt = (name: string, template: string) => {
-    handleCreatePrompt(name, template);
+    void handleCreatePrompt(name, template);
   };
 
-  const handleDeletePrompt = (promptId: string) => {
-    if (vapiService.deletePrompt(promptId)) {
-      setPrompts(prompts.filter((p) => p.id !== promptId));
+  const handleDeletePrompt = async (promptId: string) => {
+    if (!selectedPatient) return;
+
+    try {
+      await vapiRepository.deletePrompt(promptId);
+      await queryClient.invalidateQueries({
+        queryKey: ["vapi", "prompts", selectedPatient.id],
+      });
       toast({
         title: "Prompt Deleted",
         description: "Prompt has been deleted successfully.",
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to delete prompt",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Please try deleting the prompt again.",
+        variant: "destructive",
       });
     }
   };
@@ -410,7 +453,10 @@ const VAPIPage = () => {
                             ? "bg-blue-50 border-blue-500 shadow-md"
                             : "bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm"
                         }`}
-                        onClick={() => setSelectedPatient(patient)}
+                        onClick={() => {
+                          setSelectedPatientId(patient.id);
+                          setSelectedPrompt(null);
+                        }}
                       >
                         <div className="flex items-center gap-3">
                           <Avatar className="w-10 h-10">
@@ -1399,9 +1445,9 @@ const CallHistoryCard = ({
         {call.analysis?.summary && (
           <div className="text-sm text-gray-600">
             <p className="font-semibold text-gray-900">Summary</p>
-            <ReactMarkdown className="mt-1 space-y-2 rounded-md border bg-white/70 p-3 text-sm leading-relaxed text-gray-800">
-              {call.analysis.summary}
-            </ReactMarkdown>
+            <div className="mt-1 space-y-2 rounded-md border bg-white/70 p-3 text-sm leading-relaxed text-gray-800">
+              <ReactMarkdown>{call.analysis.summary}</ReactMarkdown>
+            </div>
           </div>
         )}
 
