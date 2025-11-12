@@ -48,7 +48,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { PRESET_PROMPT_TEMPLATE } from "@/lib/prompts";
+import { loadPrompt } from "@/lib/prompts";
 import type {
   Patient,
   VAPIPrompt,
@@ -134,47 +134,45 @@ const getCallStatusBadge = (status: VAPICall["status"]) => {
   return <Badge className={config.className}>{config.label}</Badge>;
 };
 
-// Default prompt templates - these are created automatically for each patient
-const PROMPT_TEMPLATES = [
+type PromptTemplateConfig = {
+  id: string;
+  name: string;
+  description: string;
+  template: string;
+};
+
+const PROMPT_TEMPLATES: PromptTemplateConfig[] = [
   {
-    id: "preset",
+    id: "standard-health-check",
     name: "Standard Health Check",
-    description:
-      "Comprehensive health check-in with symptom assessment and medication adherence review",
-    template: PRESET_PROMPT_TEMPLATE,
+    description: "General wellness check focused on symptoms, meds, and follow ups.",
+    template: loadPrompt("Standard_health_check"),
   },
   {
-    id: "daily",
+    id: "daily-wellness-check",
     name: "Daily Wellness Check",
-    description:
-      "Quick daily wellness check focusing on general well-being and daily activities",
-    template:
-      "You are Cali, calling {{patientName}}, a {{patientAge}}-year-old patient with {{patientCondition}}. Conduct a brief daily wellness check focusing on energy levels, sleep quality, and general mood.",
+    description: "Lightweight daily touchpoint to understand overall wellbeing.",
+    template: loadPrompt("Daily_wellness_check"),
   },
   {
-    id: "medication",
+    id: "medication-reminder-review",
     name: "Medication Reminder & Review",
-    description: "Medication adherence check and reminder for upcoming doses",
-    template:
-      "You are Cali, calling {{patientName}}, a {{patientAge}}-year-old patient with {{patientCondition}}. Focus on medication adherence, reviewing recent doses and reminding about upcoming medication times.",
+    description: "Ensures adherence while capturing any side effects or barriers.",
+    template: loadPrompt("Medication_reminder_review"),
   },
   {
-    id: "symptom",
+    id: "symptom-monitoring",
     name: "Symptom Monitoring",
-    description:
-      "Detailed symptom assessment focusing on condition-specific symptoms",
-    template:
-      "You are Cali, calling {{patientName}}, a {{patientAge}}-year-old patient with {{patientCondition}}. Conduct a thorough symptom assessment, asking about specific symptoms related to their condition and any concerning changes.",
+    description: "Deeper dive into symptom trends and escalation needs.",
+    template: loadPrompt("Symptom_monitoring"),
   },
   {
-    id: "weekly",
+    id: "weekly-progress-review",
     name: "Weekly Progress Review",
-    description:
-      "Comprehensive weekly review of health progress and overall condition",
-    template:
-      "You are Cali, calling {{patientName}}, a {{patientAge}}-year-old patient with {{patientCondition}}. Conduct a weekly progress review, discussing improvements, concerns, and overall health trajectory since last week.",
+    description: "Summarizes the week, reinforces care plans, and plans next steps.",
+    template: loadPrompt("Weekly_progress_review"),
   },
-];
+].filter((template) => Boolean(template.template));
 
 const VAPIPage = () => {
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
@@ -849,14 +847,14 @@ const CreatePromptForm = ({
   onSubmit: (name: string, template: string) => void;
 }) => {
   const [name, setName] = useState("");
-  const [template, setTemplate] = useState(PRESET_PROMPT_TEMPLATE);
+  const [template, setTemplate] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (name.trim() && template.trim()) {
       onSubmit(name.trim(), template.trim());
       setName("");
-      setTemplate(PRESET_PROMPT_TEMPLATE);
+      setTemplate("");
     }
   };
 

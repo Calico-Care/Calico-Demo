@@ -1,92 +1,152 @@
-# Welcome to your Lovable project
+# CalicoCare
 
-## Project info
+An AI-powered elder care management platform that provides comprehensive care coordination, intelligent monitoring, and proactive interventions for seniors with chronic conditions like CHF (Congestive Heart Failure) and COPD.
 
-**URL**: https://lovable.dev/projects/93500489-381b-4b7a-b59f-f38c2b76d9c7
+## Features
 
-## How can I edit this code?
+### 🧠 AI-Powered Patient Triage
+Advanced machine learning algorithms that instantly prioritize patient needs, ensuring critical cases receive immediate attention while optimizing care workflows.
 
-There are several ways of editing your application.
+### 📞 Agentic AI Phone Calls
+Automated intelligent phone systems that conduct natural conversations with patients, handle appointment scheduling, and provide 24/7 support using VAPI integration.
 
-**Use Lovable**
+### 🛡️ Predictive Health Monitoring
+Real-time analysis of patient vitals and behavior patterns to predict health events before they occur, enabling proactive interventions.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/93500489-381b-4b7a-b59f-f38c2b76d9c7) and start prompting.
+### 📊 Intelligent Care Analytics
+Comprehensive insights into care quality metrics, patient outcomes, and operational efficiency powered by advanced data analytics.
 
-Changes made via Lovable will be committed automatically to this repo.
+### 👥 Patient Management
+Complete patient enrollment with personal information, medical conditions, and contact details.
 
-**Use your preferred IDE**
+### 📋 Care Plan Editor
+Visual care plan builder with customizable cards for different care activities, timelines, and monitoring schedules.
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### 💬 AI Triage Assistant
+Multiple AI modules including triage designer, health reminders, health companion, and AI reports for comprehensive patient interaction.
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### 📈 Health Metrics Dashboard
+Real-time display of patient health metrics including weight, blood pressure, heart rate, and oxygen saturation.
 
-Follow these steps:
+## Tech Stack
+
+- **Frontend**: React 18, TypeScript, Vite
+- **UI Framework**: shadcn/ui, Tailwind CSS
+- **Backend**: Supabase (PostgreSQL, Auth, Real-time)
+- **AI Integration**: VAPI (voice AI platform)
+- **Drag & Drop**: @dnd-kit
+- **Forms**: React Hook Form with Zod validation
+- **Charts**: Recharts
+- **State Management**: TanStack Query
+- **Build Tool**: Vite
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 20.x or later
+- npm or bun
+- Supabase account
+- VAPI account (optional, for phone call functionality)
+
+### Installation
+
+1. **Clone the repository**
+```sh
+git clone <YOUR_GIT_URL>
+cd <YOUR_PROJECT_NAME>
+```
+
+2. **Install dependencies**
+```sh
+npm i
+```
+
+3. **Environment Setup**
+
+Create a `.env` file in the root directory with the following variables:
+
+```env
+# Supabase Configuration
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+
+# VAPI Configuration (optional)
+VITE_VAPI_API_KEY=your_vapi_api_key
+VITE_VAPI_ASSISTANT_ID=your_vapi_assistant_id
+VITE_VAPI_PHONE_NUMBER_ID=your_vapi_phone_number_id
+```
+
+4. **Setup Supabase Database**
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+# Apply database schema
+supabase db push
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+# Seed sample data (optional)
+npm run seed:supabase
+```
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+5. **Start development server**
+```sh
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The application will be available at `http://localhost:5173`.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Database Schema
 
-**Use GitHub Codespaces**
+The application uses the following main tables:
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+- **patients**: Patient information and demographics
+- **health_metrics**: Vital signs and health measurements
+- **vapi_prompts**: Custom AI call prompts per patient
+- **vapi_call_schedules**: Scheduled call configurations
+- **vapi_calls**: Call execution logs and transcripts
 
-## What technologies are used for this project?
+## Available Scripts
 
-This project is built with:
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run build:dev` - Build for development
+- `npm run lint` - Run ESLint
+- `npm run preview` - Preview production build
+- `npm run seed:supabase` - Seed database with sample data
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Deployment
 
-## Supabase setup
+This project is configured for GitHub Pages deployment with a GitHub Actions workflow. The deployment automatically builds and deploys on pushes to the main branch.
 
-The dashboard now persists data in Supabase (patients, prompts, schedules, call logs, and health metrics) and relies on Supabase Auth for login. Get started by:
+### Manual Deployment
 
-1. **Environment variables**
-   - Add the following to your `.env` file (values come from the Supabase project):
-     - `NEXT_PUBLIC_SUPABASE_URL`
-     - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-     - `SUPABASE_SERVICE_ROLE_KEY` (or set `SUPABASE_ACCESS_TOKEN` to a service role key for local scripts)
-     - Existing `VITE_VAPI_*` keys still power VAPI calls.
-2. **Apply the schema**
-   - Open the SQL Editor and run `supabase/migrations/20251111165256_init_schema.sql` (or run `supabase db push`) to create the tables, indexes, and RLS policies.
-3. **(New) Allow demo access**
-   - Run `supabase db push` so the latest migration (`20250105140300_open_access_policies.sql`) relaxes RLS and lets the anon key read/write during demos.
-4. **Seed sample data (optional)**
-   - Run `npm run seed:supabase` to upsert the original mock patients/metrics using the service role key.
-4. **Authentication**
-   - Use Supabase Auth email/password accounts to log in through `/login`. The React app listens to Supabase session events and automatically redirects on sign-in/out.
+1. Build the project:
+```sh
+npm run build
+```
 
-## How can I deploy this project?
+2. The `dist` folder contains the production build that can be deployed to any static hosting service.
 
-Simply open [Lovable](https://lovable.dev/projects/93500489-381b-4b7a-b59f-f38c2b76d9c7) and click on Share -> Publish.
+## Architecture
 
-## Can I connect a custom domain to my Lovable project?
+The application follows a modern React architecture with:
 
-Yes, you can!
+- **Component-based UI**: Reusable components built with shadcn/ui
+- **Type-safe development**: Full TypeScript integration
+- **Repository pattern**: Clean data access layer with Supabase
+- **Service layer**: Business logic separation for VAPI integration
+- **Responsive design**: Mobile-first approach with Tailwind CSS
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+## Contributing
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests and linting
+5. Submit a pull request
+
+## License
+
+This project is part of a demonstration application and is not intended for production use without proper security and compliance reviews.
