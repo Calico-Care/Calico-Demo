@@ -55,6 +55,24 @@ const formatTranscript = (
     .join("\n");
 };
 
+const stripSystemPromptEntries = (
+  entries?: VAPICallTranscriptEntry[]
+): VAPICallTranscriptEntry[] | undefined => {
+  if (!entries?.length) {
+    return undefined;
+  }
+
+  const firstDialogTurnIndex = entries.findIndex(
+    (entry) => entry.role?.toLowerCase() !== "system"
+  );
+
+  if (firstDialogTurnIndex === -1) {
+    return undefined;
+  }
+
+  return entries.slice(firstDialogTurnIndex);
+};
+
 const mergeAnalysis = (
   existing: VAPICallAnalysis | undefined,
   incoming?: VAPICallAnalysis
@@ -292,9 +310,11 @@ const extractTranscriptFromArtifact = (
     normalizeTranscriptEntries(artifact.messages) ??
     normalizeTranscriptEntries(artifact.messagesOpenAIFormatted);
 
+  const sanitizedEntries = stripSystemPromptEntries(entries);
+
   return {
-    entries,
-    formatted: formatTranscript(entries),
+    entries: sanitizedEntries,
+    formatted: formatTranscript(sanitizedEntries),
   };
 };
 
@@ -588,4 +608,3 @@ export const vapiService = {
     });
   },
 };
-
