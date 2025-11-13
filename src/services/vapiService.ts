@@ -3,6 +3,7 @@
 import { replacePromptVariables } from "@/lib/prompts";
 import { patientRepository } from "@/lib/repositories/patients";
 import { vapiRepository } from "@/lib/repositories/vapi";
+import { calculateDurationSeconds } from "@/lib/duration";
 import type {
   Patient,
   RecurrenceType,
@@ -358,6 +359,7 @@ interface VapiCallAnalysisResponse {
 
 interface VapiCallDetailsResponse extends VAPICallResponse {
   startedAt?: string;
+  endedAt?: string;
   completedAt?: string;
   duration?: number;
   artifact?: {
@@ -588,14 +590,35 @@ export const vapiService = {
     const transcriptInfo = extractTranscriptFromArtifact(data.artifact);
     const incomingAnalysis = mapApiAnalysis(data.analysis);
 
+    const startedAt = data.startedAt
+      ? new Date(data.startedAt)
+      : localCall.startedAt;
+
+    const apiDuration =
+      typeof data.duration === "number" ? data.duration : undefined;
+
+    const completedAtFromApi = data.completedAt
+      ? new Date(data.completedAt)
+      : data.endedAt
+        ? new Date(data.endedAt)
+        : undefined;
+
+    const completedAtFromDuration =
+      !completedAtFromApi && startedAt && apiDuration !== undefined
+        ? new Date(startedAt.getTime() + apiDuration * 1000)
+        : undefined;
+
+    const completedAt =
+      completedAtFromApi ?? completedAtFromDuration ?? localCall.completedAt;
+
+    const durationSeconds =
+      apiDuration ?? calculateDurationSeconds(startedAt, completedAt);
+
     return vapiRepository.updateCall(callId, {
       status: mapApiStatusToLocal(data.status),
-      startedAt: data.startedAt ? new Date(data.startedAt) : localCall.startedAt,
-      completedAt: data.completedAt
-        ? new Date(data.completedAt)
-        : localCall.completedAt,
-      duration:
-        typeof data.duration === "number" ? data.duration : localCall.duration,
+      startedAt,
+      completedAt,
+      duration: durationSeconds ?? localCall.duration,
       transcriptEntries: transcriptInfo.entries ?? localCall.transcriptEntries,
       transcript: transcriptInfo.formatted ?? localCall.transcript,
       analysis: mergeAnalysis(localCall.analysis, incomingAnalysis),

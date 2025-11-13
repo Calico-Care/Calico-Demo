@@ -60,6 +60,7 @@ import type {
 import { patientRepository } from "@/lib/repositories/patients";
 import { vapiRepository } from "@/lib/repositories/vapi";
 import { vapiService, VAPI_CONFIG } from "@/services/vapiService";
+import { calculateDurationSeconds, formatDurationLabel } from "@/lib/duration";
 import {
   format,
   startOfDay,
@@ -1399,6 +1400,17 @@ const CallHistoryCard = ({
   const transcriptPreview = call.transcriptEntries?.slice(0, 40);
   const isTranscriptTruncated =
     (call.transcriptEntries?.length || 0) > (transcriptPreview?.length || 0);
+  const durationSeconds =
+    call.duration ??
+    calculateDurationSeconds(call.startedAt, call.completedAt);
+  const durationLabel = formatDurationLabel(durationSeconds);
+  const createdLabel = format(call.createdAt, "MMM d, yyyy 'at' h:mm a");
+  const startedLabel = call.startedAt
+    ? format(call.startedAt, "MMM d, yyyy 'at' h:mm a")
+    : undefined;
+  const completedLabel = call.completedAt
+    ? format(call.completedAt, "MMM d, yyyy 'at' h:mm a")
+    : undefined;
 
   return (
     <Card>
@@ -1410,10 +1422,14 @@ const CallHistoryCard = ({
                 {prompt?.name || "Unknown Prompt"}
               </h3>
             </div>
-            <p className="text-sm text-gray-500">
-              {format(call.createdAt, "MMM d, yyyy 'at' h:mm a")}
-              {call.duration && ` • Duration: ${call.duration}s`}
-            </p>
+            <div className="text-sm text-gray-500 space-y-0.5">
+              <p>Created: {createdLabel}</p>
+              {startedLabel && <p>Started: {startedLabel}</p>}
+              <p className={completedLabel ? undefined : "text-amber-600"}>
+                Completed: {completedLabel ?? "Not recorded yet"}
+                {completedLabel && durationLabel && ` • Duration: ${durationLabel}`}
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {call.providerCallId && (
