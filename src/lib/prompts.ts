@@ -35,5 +35,7 @@ export function replacePromptVariables(prompt: string, patient: Patient): string
   return prompt
     .replace(/\{\{patientName\}\}/g, `${patient.firstName} ${patient.lastName}`)
     .replace(/\{\{patientAge\}\}/g, age.toString())
-    .replace(/\{\{patientCondition\}\}/g, patient.primaryCondition);
+    .replace(/\{\{patientCondition\}\}/g, patient.primaryCondition)
+    .replace(/\{\{patientPrompt\}\}/g, "")
+    .replace(/\{\{conversationHistory\}\}/g, "");
 }
