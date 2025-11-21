@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Search,
@@ -16,6 +16,7 @@ import {
   Check,
   Loader2,
   RefreshCw,
+  ChevronDown,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { Button } from "@/components/ui/button";
@@ -47,8 +48,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import { loadPrompt } from "@/lib/prompts";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type {
   Patient,
   VAPIPrompt,
@@ -179,10 +193,22 @@ const VAPIPage = () => {
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreatePromptOpen, setIsCreatePromptOpen] = useState(false);
-  const [isScheduleCallOpen, setIsScheduleCallOpen] = useState(false);
   const [selectedPrompt, setSelectedPrompt] = useState<VAPIPrompt | null>(null);
   const [callingPromptId, setCallingPromptId] = useState<string | null>(null);
   const [refreshingCallId, setRefreshingCallId] = useState<string | null>(null);
+  const [isScheduleManagerOpen, setIsScheduleManagerOpen] = useState(false);
+  const [recentlyAddedPromptName, setRecentlyAddedPromptName] = useState<string | null>(null);
+  const [presetInFlight, setPresetInFlight] = useState<string | null>(null);
+  const highlightTimeoutRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        window.clearTimeout(highlightTimeoutRef.current);
+      }
+    };
+  }, []);
+  const [callHistoryOpen, setCallHistoryOpen] = useState(true);
+  const [callDetailsCall, setCallDetailsCall] = useState<VAPICall | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -223,6 +249,40 @@ const VAPIPage = () => {
   const prompts = promptsQuery.data ?? [];
   const schedules = schedulesQuery.data ?? [];
   const callHistory = callsQuery.data ?? [];
+  const availablePresetTemplates = useMemo(
+    () =>
+      PROMPT_TEMPLATES.filter(
+        (template) => !prompts.some((p) => p.name === template.name),
+      ),
+    [prompts],
+  );
+  const activeSchedules = schedules.filter((schedule) => schedule.isActive);
+  const nextScheduledCall =
+    activeSchedules
+      .filter((schedule) => schedule.scheduledTime)
+      .sort(
+        (a, b) =>
+          new Date(a.scheduledTime!).getTime() -
+          new Date(b.scheduledTime!).getTime(),
+      )[0] ?? null;
+  const nextScheduledLabel = nextScheduledCall?.scheduledTime
+    ? format(nextScheduledCall.scheduledTime, "MMM d, yyyy 'at' h:mm a")
+    : "No upcoming call scheduled";
+  const recurringScheduleCount = activeSchedules.filter(
+    (schedule) => schedule.type === "recurring",
+  ).length;
+  const oneTimeScheduleCount = activeSchedules.filter(
+    (schedule) => schedule.type === "one-time",
+  ).length;
+
+  const selectedCallPrompt = callDetailsCall
+    ? prompts.find((p) => p.id === callDetailsCall.promptId)
+    : null;
+  const callDetailsTimestamp =
+    callDetailsCall?.startedAt ?? callDetailsCall?.createdAt ?? null;
+  const callDetailsTimestampLabel = callDetailsTimestamp
+    ? format(callDetailsTimestamp, "MMM d, yyyy 'at' h:mm a")
+    : null;
 
   const filteredPatients = patients.filter((patient) =>
     `${patient.firstName} ${patient.lastName}`
@@ -231,7 +291,7 @@ const VAPIPage = () => {
   );
 
   const handleCreatePrompt = async (name: string, promptTemplate: string) => {
-    if (!selectedPatient) return;
+    if (!selectedPatient) return false;
 
     try {
       await vapiRepository.createPrompt({
@@ -247,6 +307,7 @@ const VAPIPage = () => {
         title: "Prompt Created",
         description: `Prompt "${name}" has been created for ${selectedPatient.firstName} ${selectedPatient.lastName}.`,
       });
+      return true;
     } catch (error) {
       toast({
         title: "Prompt Error",
@@ -256,6 +317,7 @@ const VAPIPage = () => {
             : "Unable to create prompt right now.",
         variant: "destructive",
       });
+      return false;
     }
   };
 
@@ -357,7 +419,8 @@ const VAPIPage = () => {
           description: `Call has been scheduled for ${selectedPatient.firstName} ${selectedPatient.lastName}.`,
         });
       }
-      setIsScheduleCallOpen(false);
+      setIsScheduleManagerOpen(false);
+      setSelectedPrompt(null);
     } catch (error) {
       toast({
         title: "Error",
@@ -368,8 +431,24 @@ const VAPIPage = () => {
     }
   };
 
-  const handleAddPresetPrompt = (name: string, template: string) => {
-    void handleCreatePrompt(name, template);
+  const handleAddPresetPrompt = async (name: string, template: string) => {
+    if (!selectedPatient) return;
+    setPresetInFlight(name);
+    if (highlightTimeoutRef.current) {
+      window.clearTimeout(highlightTimeoutRef.current);
+      highlightTimeoutRef.current = null;
+    }
+    const success = await handleCreatePrompt(name, template);
+    setPresetInFlight(null);
+    if (!success) {
+      return;
+    }
+    setRecentlyAddedPromptName(name);
+    highlightTimeoutRef.current = window.setTimeout(() => {
+      setRecentlyAddedPromptName((current) =>
+        current === name ? null : current,
+      );
+    }, 1200);
   };
 
   const handleDeletePrompt = async (promptId: string) => {
@@ -398,46 +477,122 @@ const VAPIPage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
+      <div className="w-full p-4 sm:p-6 space-y-5 sm:space-y-6">
         {/* Header */}
         <div className="flex items-center justify-center">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center">
-              <span className="text-orange-600 text-2xl">🐱</span>
-            </div>
+            <img src="/Calico%20Icon@4x.png" alt="Cali Logo" className="w-12 h-12" />
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">
+              <h1 className="text-3xl font-bold text-foreground">
                 Cali Assistant
               </h1>
-              <p className="text-gray-600">
+              <p className="text-muted-foreground">
                 Manage patient calls and voice prompts
               </p>
-            </div>
-          </div>
+                </div>
+
+                {selectedPatient && (
+                  <Dialog
+                    open={isScheduleManagerOpen}
+                    onOpenChange={(open) => {
+                      setIsScheduleManagerOpen(open);
+                      if (!open) {
+                        setSelectedPrompt(null);
+                      }
+                    }}
+                  >
+                    <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle>Manage Scheduled Calls</DialogTitle>
+                        <DialogDescription>
+                          Set up automated outreach for {selectedPatient.firstName} {selectedPatient.lastName}.
+                        </DialogDescription>
+                      </DialogHeader>
+                      {schedules.length === 0 ? (
+                        <div className="text-center py-10 border-2 border-dashed border-gray-200 rounded-lg text-sm text-gray-500">
+                          No scheduled calls yet.
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {schedules.map((schedule) => (
+                            <ScheduleCard key={schedule.id} schedule={schedule} prompts={prompts} />
+                          ))}
+                        </div>
+                      )}
+                      <Separator className="my-4" />
+                      {prompts.length > 0 ? (
+                        <div className="space-y-4">
+                          <h4 className="text-sm font-semibold text-gray-900">Schedule a new call</h4>
+                          <ScheduleCallForm
+                            prompts={prompts}
+                            selectedPrompt={selectedPrompt}
+                            onSubmit={handleScheduleCall}
+                            existingSchedules={schedules}
+                          />
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500">
+                          Add a voice prompt before scheduling automated calls.
+                        </p>
+                      )}
+                    </DialogContent>
+                  </Dialog>
+                )}
+
+                <Dialog
+                  open={Boolean(callDetailsCall)}
+                  onOpenChange={(open) => {
+                    if (!open) {
+                      setCallDetailsCall(null);
+                    }
+                  }}
+                >
+                  <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                    {callDetailsCall && (
+                      <>
+                        <DialogHeader>
+                          <DialogTitle>
+                            {selectedCallPrompt?.name || "Call details"}
+                          </DialogTitle>
+                          <DialogDescription>
+                            {callDetailsTimestampLabel
+                              ? `Occurred ${callDetailsTimestampLabel}`
+                              : "Call timestamp not available"}
+                          </DialogDescription>
+                        </DialogHeader>
+                        <CallHistoryDetails
+                          call={callDetailsCall}
+                          prompts={prompts}
+                        />
+                      </>
+                    )}
+                  </DialogContent>
+                </Dialog>
+              </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)] lg:gap-6">
           {/* Patient List Sidebar */}
           <div className="lg:col-span-1">
             <Card>
-              <CardHeader>
+              <CardHeader className="pb-3">
                 <CardTitle>Patients</CardTitle>
                 <CardDescription>
                   Select a patient to manage their calls
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <CardContent className="space-y-4 text-sm">
+                <div className="relative max-w-sm">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <Input
                     placeholder="Search patients..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
+                    className="pl-10 pr-3"
                   />
                 </div>
 
-                <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
                   {filteredPatients.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
                       <User className="w-12 h-12 mx-auto mb-2 opacity-50" />
@@ -484,283 +639,245 @@ const VAPIPage = () => {
           </div>
 
           {/* Main Content Area */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-1">
             {selectedPatient ? (
-              <div className="space-y-6">
-                {/* Patient Info Header */}
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-4">
-                        <Avatar className="w-16 h-16">
-                          <AvatarFallback className="bg-blue-100 text-blue-700 text-xl font-semibold">
-                            {selectedPatient.firstName[0]}
-                            {selectedPatient.lastName[0]}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <h2 className="text-2xl font-bold text-gray-900">
-                            {selectedPatient.firstName}{" "}
-                            {selectedPatient.lastName}
-                          </h2>
-                          <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
-                            <div className="flex items-center gap-1">
-                              <Mail className="w-4 h-4" />
-                              <span>{selectedPatient.email}</span>
-                            </div>
-                            {selectedPatient.phone && (
-                              <div className="flex items-center gap-1">
-                                <Phone className="w-4 h-4" />
-                                <span>{selectedPatient.phone}</span>
+              <div className="space-y-5">
+                <div className="grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(380px,1.5fr)] items-start">
+                  <div className="space-y-5 xl:max-w-4xl">
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-4">
+                            <Avatar className="w-16 h-16">
+                              <AvatarFallback className="bg-blue-100 text-blue-700 text-xl font-semibold">
+                                {selectedPatient.firstName[0]}
+                                {selectedPatient.lastName[0]}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <h2 className="text-2xl font-bold text-gray-900">
+                                {selectedPatient.firstName}{" "}
+                                {selectedPatient.lastName}
+                              </h2>
+                              <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
+                                <div className="flex items-center gap-1">
+                                  <Mail className="w-4 h-4" />
+                                  <span>{selectedPatient.email}</span>
+                                </div>
+                                {selectedPatient.phone && (
+                                  <div className="flex items-center gap-1">
+                                    <Phone className="w-4 h-4" />
+                                    <span>{selectedPatient.phone}</span>
+                                  </div>
+                                )}
+                                <Badge variant="secondary">
+                                  {selectedPatient.primaryCondition}
+                                </Badge>
                               </div>
-                            )}
-                            <Badge variant="secondary">
-                              {selectedPatient.primaryCondition}
-                            </Badge>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                      </CardContent>
+                    </Card>
 
-                {/* Prompts Section */}
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle>Voice Prompts</CardTitle>
-                        <CardDescription>
-                          Manage prompts for automated patient calls
-                        </CardDescription>
-                      </div>
-                      <Dialog
-                        open={isCreatePromptOpen}
-                        onOpenChange={setIsCreatePromptOpen}
-                      >
-                        <DialogTrigger asChild>
-                          <Button variant="outline">
-                            <Plus className="w-4 h-4 mr-2" />
-                            Create Custom Prompt
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Create New Prompt</DialogTitle>
-                            <DialogDescription>
-                              Create a custom prompt for{" "}
-                              {selectedPatient.firstName}{" "}
-                              {selectedPatient.lastName}
-                            </DialogDescription>
-                          </DialogHeader>
-                          <CreatePromptForm
-                            onSubmit={(name, template) =>
-                              handleCreatePrompt(name, template)
-                            }
-                          />
-                        </DialogContent>
-                      </Dialog>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {prompts.length === 0 ? (
-                      <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-lg mb-6">
-                        <Phone className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                        <p className="text-gray-500 font-medium mb-2">
-                          No prompts added yet
-                        </p>
-                        <p className="text-sm text-gray-400">
-                          Add preset prompts below or create a custom one
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-4 mb-6">
-                        {prompts.map((prompt) => (
-                          <PromptCard
-                            key={prompt.id}
-                            prompt={prompt}
-                            onDelete={handleDeletePrompt}
-                            onCallNow={() => handleCallNow(prompt.id)}
-                            onSchedule={() => {
-                              setSelectedPrompt(prompt);
-                              setIsScheduleCallOpen(true);
-                            }}
-                            isLoading={callingPromptId === prompt.id}
-                          />
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Preset Prompts Section */}
-                    <div className="border-t pt-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                        Preset Prompts
-                      </h3>
-                      <p className="text-sm text-gray-500 mb-4">
-                        Add these pre-configured prompts to this patient
-                      </p>
-                      <div className="space-y-3">
-                        {PROMPT_TEMPLATES.map((template) => {
-                          const isAlreadyAdded = prompts.some(
-                            (p) => p.name === template.name
-                          );
-                          return (
-                            <Card
-                              key={template.id}
-                              className="hover:shadow-md transition-shadow"
-                            >
-                              <CardContent className="pt-6">
-                                <div className="flex items-start justify-between">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-3 mb-2">
-                                      <h4 className="text-base font-semibold text-gray-900">
-                                        {template.name}
-                                      </h4>
-                                      {isAlreadyAdded && (
-                                        <Badge variant="secondary">Added</Badge>
-                                      )}
-                                    </div>
-                                    <p className="text-sm text-gray-500 mb-3">
-                                      {template.description}
-                                    </p>
-                                  </div>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() =>
-                                      handleAddPresetPrompt(
-                                        template.name,
-                                        template.template
-                                      )
-                                    }
-                                    disabled={isAlreadyAdded}
-                                  >
-                                    {isAlreadyAdded ? (
-                                      <>
-                                        <Check className="w-4 h-4 mr-2" />
-                                        Added
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Plus className="w-4 h-4 mr-2" />
-                                        Add
-                                      </>
-                                    )}
-                                  </Button>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Scheduled Calls Section */}
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle>Scheduled Calls</CardTitle>
-                        <CardDescription>
-                          View and manage scheduled patient calls
-                        </CardDescription>
-                      </div>
-                      {prompts.length > 0 && (
-                        <Dialog
-                          open={isScheduleCallOpen}
-                          onOpenChange={(open) => {
-                            setIsScheduleCallOpen(open);
-                            if (!open) {
-                              setSelectedPrompt(null);
-                            }
-                          }}
-                        >
-                          <DialogTrigger asChild>
-                            <Button variant="outline">
-                              <Calendar className="w-4 h-4 mr-2" />
-                              Schedule Call
+                    <Collapsible
+                      open={callHistoryOpen}
+                      onOpenChange={setCallHistoryOpen}
+                      className="xl:col-span-1"
+                    >
+                      <Card className="h-full">
+                        <CardHeader className="flex flex-row items-center justify-between gap-4">
+                          <div>
+                            <CardTitle>Call History</CardTitle>
+                            <CardDescription>
+                              Tap to view recent calls and refresh reports
+                            </CardDescription>
+                          </div>
+                          <CollapsibleTrigger asChild>
+                            <Button variant="ghost" size="sm" className="gap-1 text-gray-600">
+                              {callHistoryOpen ? "Hide" : "Show"}
+                              <ChevronDown
+                                className={`h-4 w-4 transition-transform ${callHistoryOpen ? "rotate-180" : ""}`}
+                              />
                             </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-2xl">
-                            <DialogHeader>
-                              <DialogTitle>Schedule VAPI Call</DialogTitle>
-                              <DialogDescription>
-                                Schedule a call for {selectedPatient.firstName}{" "}
-                                {selectedPatient.lastName}
-                              </DialogDescription>
-                            </DialogHeader>
-                            <ScheduleCallForm
+                          </CollapsibleTrigger>
+                        </CardHeader>
+                        <CollapsibleContent>
+                          <CardContent className="pt-0">
+                            <CallHistoryTable
+                              calls={callHistory}
                               prompts={prompts}
-                              selectedPrompt={selectedPrompt}
-                              onSubmit={handleScheduleCall}
-                              existingSchedules={schedules}
+                              onSelectCall={(call) => setCallDetailsCall(call)}
+                              onRefresh={handleRefreshCallReport}
+                              refreshingCallId={refreshingCallId}
                             />
-                          </DialogContent>
-                        </Dialog>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {schedules.length === 0 ? (
-                      <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-lg">
-                        <Calendar className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                        <p className="text-gray-500 font-medium mb-2">
-                          No scheduled calls
-                        </p>
-                        <p className="text-sm text-gray-400">
-                          Schedule calls to automate patient check-ins
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        {schedules.map((schedule) => (
-                          <ScheduleCard
-                            key={schedule.id}
-                            schedule={schedule}
-                            prompts={prompts}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                          </CardContent>
+                        </CollapsibleContent>
+                      </Card>
+                    </Collapsible>
+                  </div>
 
-                {/* Call History Section */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Call History</CardTitle>
-                    <CardDescription>
-                      View past call records and status
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {callHistory.length === 0 ? (
-                      <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-lg">
-                        <Clock className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                        <p className="text-gray-500 font-medium mb-2">
-                          No call history
-                        </p>
-                        <p className="text-sm text-gray-400">
-                          Call history will appear here after calls are made
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        {callHistory.map((call) => (
-                          <CallHistoryCard
-                            key={call.id}
-                            call={call}
-                            prompts={prompts}
-                            onRefresh={() => handleRefreshCallReport(call.id)}
-                            isRefreshing={refreshingCallId === call.id}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                  <div className="space-y-5">
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <CardTitle className="text-lg">Voice Prompts</CardTitle>
+                            <CardDescription>Manage automated call scripts</CardDescription>
+                          </div>
+                          <Dialog open={isCreatePromptOpen} onOpenChange={setIsCreatePromptOpen}>
+                            <DialogTrigger asChild>
+                              <Button variant="outline" size="sm">
+                                <Plus className="w-4 h-4 mr-2" />
+                                New
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Create New Prompt</DialogTitle>
+                                <DialogDescription>
+                                  Create a custom prompt for {selectedPatient.firstName} {selectedPatient.lastName}
+                                </DialogDescription>
+                              </DialogHeader>
+                              <CreatePromptForm
+                                onSubmit={(name, template) => handleCreatePrompt(name, template)}
+                              />
+                            </DialogContent>
+                          </Dialog>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-5 text-sm">
+                        {prompts.length === 0 ? (
+                          <div className="text-center py-8 border-2 border-dashed border-gray-200 rounded-lg">
+                            <Phone className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                            <p className="text-gray-500 font-medium">No prompts yet</p>
+                            <p className="text-xs text-gray-400">Add a preset or custom prompt to begin</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+                            {prompts.map((prompt) => (
+                              <PromptCard
+                                key={prompt.id}
+                                prompt={prompt}
+                                onDelete={handleDeletePrompt}
+                                onCallNow={() => handleCallNow(prompt.id)}
+                                onSchedule={() => {
+                                  setSelectedPrompt(prompt);
+                                  setIsScheduleManagerOpen(true);
+                                }}
+                                isLoading={callingPromptId === prompt.id}
+                                isHighlighted={recentlyAddedPromptName === prompt.name}
+                              />
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="border-t pt-4">
+                          <div>
+                            <h3 className="text-base font-semibold text-gray-900">Preset Prompts</h3>
+                            <p className="text-xs text-gray-500">Quick-start templates</p>
+                          </div>
+                          {availablePresetTemplates.length === 0 ? (
+                            <p className="text-xs text-gray-500">
+                              All preset prompts have been added for this patient.
+                            </p>
+                          ) : (
+                            <div className="mt-4 space-y-3">
+                              {availablePresetTemplates.map((template) => (
+                                <Card
+                                  key={template.id}
+                                  className={`hover:shadow-md transition-all duration-300 ${
+                                    presetInFlight === template.name
+                                      ? "opacity-0 -translate-y-2 scale-95 pointer-events-none"
+                                      : ""
+                                  }`}
+                                >
+                                  <CardContent className="pt-4 pb-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <h4 className="text-sm font-semibold text-gray-900">
+                                            {template.name}
+                                          </h4>
+                                        </div>
+                                        <p className="text-xs text-gray-500">
+                                          {template.description}
+                                        </p>
+                                      </div>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8 px-2 text-xs"
+                                        onClick={() =>
+                                          handleAddPresetPrompt(
+                                            template.name,
+                                            template.template,
+                                          )
+                                        }
+                                        disabled={presetInFlight === template.name}
+                                      >
+                                        <Plus className="w-3 h-3 mr-1" />
+                                        Add
+                                      </Button>
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <CardTitle className="text-lg">Scheduled Calls</CardTitle>
+                            <CardDescription>Quick overview</CardDescription>
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setSelectedPrompt(null);
+                              setIsScheduleManagerOpen(true);
+                            }}
+                          >
+                            <Calendar className="w-4 h-4 mr-2" />
+                            Manage
+                          </Button>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-3 text-sm text-gray-600">
+                        <div className="flex items-center justify-between">
+                          <span>Active schedules</span>
+                          <span className="font-semibold text-gray-900">
+                            {activeSchedules.length}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-gray-500">
+                            Next call
+                          </p>
+                          <p className="text-sm font-semibold text-gray-900">
+                            {nextScheduledLabel}
+                          </p>
+                        </div>
+                        {activeSchedules.length > 0 ? (
+                          <p className="text-xs text-gray-500">
+                            {activeSchedules.filter((schedule) => schedule.type === "recurring").length} recurring ·{" "}
+                            {activeSchedules.filter((schedule) => schedule.type === "one-time").length} one-time
+                          </p>
+                        ) : (
+                          <p className="text-xs text-gray-500">
+                            Create a schedule to automate patient touchpoints.
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+
               </div>
             ) : (
               <Card>
@@ -903,15 +1020,21 @@ const PromptCard = ({
   onCallNow,
   onSchedule,
   isLoading = false,
+  isHighlighted = false,
 }: {
   prompt: VAPIPrompt;
   onDelete: (id: string) => void;
   onCallNow: () => void;
   onSchedule: () => void;
   isLoading?: boolean;
+  isHighlighted?: boolean;
 }) => {
   return (
-    <Card className="hover:shadow-md transition-shadow">
+    <Card
+      className={`hover:shadow-md transition-all duration-300 ${
+        isHighlighted ? "ring-2 ring-blue-400 bg-blue-50/60 shadow-lg" : ""
+      }`}
+    >
       <CardContent className="pt-6">
         <div className="flex items-start justify-between">
           <div className="flex-1">
@@ -1159,7 +1282,7 @@ const ScheduleCallForm = ({
                         isOccupied
                           ? "opacity-50 cursor-not-allowed bg-gray-100"
                           : isSelected
-                          ? "bg-blue-600 text-white"
+                          ? "bg-primary text-primary-foreground"
                           : "hover:bg-gray-50"
                       }`}
                     >
@@ -1240,7 +1363,7 @@ const ScheduleCallForm = ({
                     variant={isSelected ? "default" : "outline"}
                     onClick={() => setSelectedTimeBlock(block)}
                     className={`h-10 text-sm ${
-                      isSelected ? "bg-blue-600 text-white" : "hover:bg-gray-50"
+                      isSelected ? "bg-primary text-primary-foreground" : "hover:bg-gray-50"
                     }`}
                   >
                     {formatTimeBlock(block)}
@@ -1381,17 +1504,122 @@ const ScheduleCard = ({
   );
 };
 
-// Call History Card Component
-const CallHistoryCard = ({
+// Call History Components
+const CallHistoryTable = ({
+  calls,
+  prompts,
+  onSelectCall,
+  onRefresh,
+  refreshingCallId,
+}: {
+  calls: VAPICall[];
+  prompts: VAPIPrompt[];
+  onSelectCall: (call: VAPICall) => void;
+  onRefresh: (id: string) => void;
+  refreshingCallId: string | null;
+}) => {
+  if (calls.length === 0) {
+    return (
+      <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-lg">
+        <Clock className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+        <p className="text-gray-500 font-medium mb-2">No call history</p>
+        <p className="text-sm text-gray-400">
+          Call history will appear here after calls are made
+        </p>
+      </div>
+    );
+  }
+
+  const sortedCalls = [...calls].sort((a, b) => {
+    const dateA = a.startedAt ?? a.createdAt;
+    const dateB = b.startedAt ?? b.createdAt;
+    return (dateB?.getTime() || 0) - (dateA?.getTime() || 0);
+  });
+
+  return (
+    <div className="space-y-2">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Call</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Duration</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {sortedCalls.map((call) => {
+            const prompt = prompts.find((p) => p.id === call.promptId);
+            const callDate = call.startedAt ?? call.createdAt;
+            const callDateLabel = callDate
+              ? format(callDate, "MMM d, yyyy 'at' h:mm a")
+              : "—";
+            const durationSeconds =
+              call.duration ??
+              calculateDurationSeconds(call.startedAt, call.completedAt);
+            const durationLabel = durationSeconds
+              ? formatDurationLabel(durationSeconds)
+              : "—";
+
+            return (
+              <TableRow
+                key={call.id}
+                className="cursor-pointer transition hover:bg-gray-50"
+                onClick={() => onSelectCall(call)}
+              >
+                <TableCell>
+                  <div className="font-medium text-gray-900">
+                    {prompt?.name || "Unknown Prompt"}
+                  </div>
+                  <p className="text-xs text-gray-500">{callDateLabel}</p>
+                </TableCell>
+                <TableCell>{getCallStatusBadge(call.status)}</TableCell>
+                <TableCell>{durationLabel}</TableCell>
+                <TableCell className="text-right">
+                  <div className="flex items-center justify-end gap-2">
+                    {call.providerCallId && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onRefresh(call.id);
+                        }}
+                        disabled={refreshingCallId === call.id}
+                      >
+                        {refreshingCallId === call.id ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Syncing
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="w-4 h-4 mr-2" />
+                            Sync report
+                          </>
+                        )}
+                      </Button>
+                    )}
+                    <span className="text-xs text-gray-500">
+                      Tap for details
+                    </span>
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+};
+
+const CallHistoryDetails = ({
   call,
   prompts,
-  onRefresh,
-  isRefreshing,
 }: {
   call: VAPICall;
   prompts: VAPIPrompt[];
-  onRefresh: () => void;
-  isRefreshing: boolean;
 }) => {
   const prompt = prompts.find((p) => p.id === call.promptId);
   const report = isEndOfCallReport(call.analysis?.structuredData)
@@ -1413,201 +1641,172 @@ const CallHistoryCard = ({
     : undefined;
 
   return (
-    <Card>
-      <CardContent className="pt-6 space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="font-semibold text-gray-900">
-                {prompt?.name || "Unknown Prompt"}
-              </h3>
-            </div>
-            <div className="text-sm text-gray-500 space-y-0.5">
-              <p>Created: {createdLabel}</p>
-              {startedLabel && <p>Started: {startedLabel}</p>}
-              <p className={completedLabel ? undefined : "text-amber-600"}>
-                Completed: {completedLabel ?? "Not recorded yet"}
-                {completedLabel && durationLabel && ` • Duration: ${durationLabel}`}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {call.providerCallId && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onRefresh}
-                disabled={isRefreshing}
-              >
-                {isRefreshing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Syncing...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Sync report
-                  </>
-                )}
-              </Button>
-            )}
-            {getCallStatusBadge(call.status)}
+    <div className="space-y-4 rounded-lg border bg-gray-50 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="text-sm text-gray-600 space-y-0.5">
+          <p className="font-semibold text-gray-900">
+            {prompt?.name || "Unknown Prompt"}
+          </p>
+          <p>Created: {createdLabel}</p>
+          {startedLabel && <p>Started: {startedLabel}</p>}
+          <p className={completedLabel ? undefined : "text-amber-600"}>
+            Completed: {completedLabel ?? "Not recorded yet"}
+            {completedLabel && durationLabel && ` • Duration: ${durationLabel}`}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">{getCallStatusBadge(call.status)}</div>
+      </div>
+
+      {call.analysis?.summary && (
+        <div className="text-sm text-gray-600">
+          <p className="font-semibold text-gray-900">Summary</p>
+          <div className="mt-1 space-y-2 rounded-md border bg-white p-3 text-sm leading-relaxed text-gray-800">
+            <ReactMarkdown>{call.analysis.summary}</ReactMarkdown>
           </div>
         </div>
+      )}
 
-        {call.analysis?.summary && (
-          <div className="text-sm text-gray-600">
-            <p className="font-semibold text-gray-900">Summary</p>
-            <div className="mt-1 space-y-2 rounded-md border bg-white/70 p-3 text-sm leading-relaxed text-gray-800">
-              <ReactMarkdown>{call.analysis.summary}</ReactMarkdown>
+      {report && (
+        <div className="rounded-lg border bg-white p-4 text-sm text-gray-600">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-gray-500">
+                Outcome
+              </p>
+              <p className="font-medium text-gray-900">
+                {report.conversationOutcome}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-gray-500">
+                Risk level
+              </p>
+              <p className="font-medium text-gray-900">{report.riskLevel}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-gray-500">
+                Follow-up
+              </p>
+              <p className="font-medium text-gray-900">
+                {report.followUpType}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-gray-500">
+                Escalation needed
+              </p>
+              <p className="font-medium text-gray-900">
+                {report.escalationNeeded ? "Yes" : "No"}
+              </p>
             </div>
           </div>
-        )}
-
-        {report && (
-          <div className="rounded-lg border bg-gray-50 p-4 text-sm text-gray-600">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">
-                  Outcome
-                </p>
-                <p className="font-medium text-gray-900">
-                  {report.conversationOutcome}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">
-                  Risk level
-                </p>
-                <p className="font-medium text-gray-900">{report.riskLevel}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">
-                  Follow-up
-                </p>
-                <p className="font-medium text-gray-900">
-                  {report.followUpType}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">
-                  Escalation needed
-                </p>
-                <p className="font-medium text-gray-900">
-                  {report.escalationNeeded ? "Yes" : "No"}
-                </p>
-              </div>
+          {report.symptomsDiscussed?.length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs uppercase tracking-wide text-gray-500">
+                Symptoms discussed
+              </p>
+              <p className="font-medium text-gray-900">
+                {report.symptomsDiscussed.join(", ")}
+              </p>
             </div>
-            {report.symptomsDiscussed?.length > 0 && (
-              <div className="mt-3">
-                <p className="text-xs uppercase tracking-wide text-gray-500">
-                  Symptoms discussed
-                </p>
-                <p className="font-medium text-gray-900">
-                  {report.symptomsDiscussed.join(", ")}
-                </p>
-              </div>
-            )}
-            {report.recommendedActions?.length > 0 && (
-              <div className="mt-3">
-                <p className="text-xs uppercase tracking-wide text-gray-500">
-                  Recommended actions
-                </p>
-                <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-700">
-                  {report.recommendedActions.map((action, index) => (
-                    <li key={`${action.owner}-${index}`}>
-                      <span className="font-medium">{action.owner}</span>:{" "}
-                      {action.action} ({action.urgency})
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {report.notes && (
-              <p className="mt-3 text-gray-700">
-                <span className="font-medium">Notes:</span> {report.notes}
+          )}
+          {report.recommendedActions?.length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs uppercase tracking-wide text-gray-500">
+                Recommended actions
+              </p>
+              <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-700">
+                {report.recommendedActions.map((action, index) => (
+                  <li key={`${action.owner}-${index}`}>
+                    <span className="font-medium">{action.owner}</span>: {action.action} ({action.urgency})
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {report.notes && (
+            <p className="mt-3 text-gray-700">
+              <span className="font-medium">Notes:</span> {report.notes}
+            </p>
+          )}
+        </div>
+      )}
+
+      {call.analysis?.successEvaluation && (
+        <div>
+          <p className="text-sm font-semibold text-gray-900">
+            Success evaluation
+          </p>
+          <pre className="mt-2 max-h-40 overflow-y-auto rounded-md border bg-gray-50 p-3 text-xs text-gray-700">
+            {JSON.stringify(call.analysis.successEvaluation, null, 2)}
+          </pre>
+        </div>
+      )}
+
+      {transcriptPreview?.length ? (
+        <div>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-gray-900">Transcript</p>
+            {isTranscriptTruncated && (
+              <p className="text-xs text-gray-500">
+                Showing first {transcriptPreview.length} turns
               </p>
             )}
           </div>
-        )}
-
-        {call.analysis?.successEvaluation && (
-          <div>
-            <p className="text-sm font-semibold text-gray-900">
-              Success evaluation
-            </p>
-            <pre className="mt-2 max-h-40 overflow-y-auto rounded-md border bg-gray-50 p-3 text-xs text-gray-700">
-              {JSON.stringify(call.analysis.successEvaluation, null, 2)}
-            </pre>
+          <div className="mt-1 max-h-56 space-y-1 overflow-y-auto rounded-md border bg-gray-50 p-3 text-xs font-mono leading-relaxed text-gray-800">
+            {transcriptPreview.map((entry, index) => (
+              <p key={`${entry.role}-${index}`}>
+                <span className="text-gray-500 uppercase">
+                  {entry.role || "speaker"}:
+                </span>{" "}
+                {entry.message}
+              </p>
+            ))}
           </div>
-        )}
+        </div>
+      ) : null}
 
-        {transcriptPreview?.length ? (
-          <div>
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-gray-900">Transcript</p>
-              {isTranscriptTruncated && (
-                <p className="text-xs text-gray-500">
-                  Showing first {transcriptPreview.length} turns
-                </p>
+      {call.artifacts &&
+        (call.artifacts.recording ||
+          call.artifacts.logUrl ||
+          call.artifacts.transcriptUrl) && (
+          <div className="text-sm text-gray-600">
+            <p className="font-semibold text-gray-900">Artifacts</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {call.artifacts.recording && (
+                <a
+                  href={call.artifacts.recording}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-md border px-3 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                >
+                  Recording
+                </a>
+              )}
+              {call.artifacts.transcriptUrl && (
+                <a
+                  href={call.artifacts.transcriptUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-md border px-3 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                >
+                  Full transcript
+                </a>
+              )}
+              {call.artifacts.logUrl && (
+                <a
+                  href={call.artifacts.logUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-md border px-3 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                >
+                  Call logs
+                </a>
               )}
             </div>
-            <div className="mt-1 max-h-56 space-y-1 overflow-y-auto rounded-md border bg-gray-50 p-3 text-xs font-mono leading-relaxed text-gray-800">
-              {transcriptPreview.map((entry, index) => (
-                <p key={`${entry.role}-${index}`}>
-                  <span className="text-gray-500 uppercase">
-                    {entry.role || "speaker"}:
-                  </span>{" "}
-                  {entry.message}
-                </p>
-              ))}
-            </div>
           </div>
-        ) : null}
-
-        {call.artifacts &&
-          (call.artifacts.recording ||
-            call.artifacts.logUrl ||
-            call.artifacts.transcriptUrl) && (
-            <div className="text-sm text-gray-600">
-              <p className="font-semibold text-gray-900">Artifacts</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {call.artifacts.recording && (
-                  <a
-                    href={call.artifacts.recording}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-md border px-3 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50"
-                  >
-                    Recording
-                  </a>
-                )}
-                {call.artifacts.transcriptUrl && (
-                  <a
-                    href={call.artifacts.transcriptUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-md border px-3 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50"
-                  >
-                    Full transcript
-                  </a>
-                )}
-                {call.artifacts.logUrl && (
-                  <a
-                    href={call.artifacts.logUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-md border px-3 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50"
-                  >
-                    Call logs
-                  </a>
-                )}
-              </div>
-            </div>
-          )}
-      </CardContent>
-    </Card>
+        )}
+    </div>
   );
 };
 

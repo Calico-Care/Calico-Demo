@@ -195,7 +195,7 @@ const AlexaPage = () => {
                         <Button
                           onClick={handleVideoCall}
                           disabled={selectedPatient.deviceStatus === "offline"}
-                          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 flex items-center space-x-2"
+                          className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-2 flex items-center space-x-2"
                         >
                           <Video className="w-4 h-4" />
                           <span>Video Call</span>

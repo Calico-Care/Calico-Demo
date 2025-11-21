@@ -58,10 +58,10 @@ const CardConfigModal = ({ card, isOpen, onClose }: CardConfigModalProps) => {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl w-[90vw] h-[80vh] p-0 overflow-hidden">
-        <DialogHeader className="bg-yellow-600 text-white p-4">
+        <DialogHeader className="bg-primary text-primary-foreground p-4">
           <DialogTitle className="flex items-center justify-between">
             <span>{card.name}</span>
-            <Button variant="ghost" size="sm" onClick={onClose} className="text-white hover:bg-white/20">
+            <Button variant="ghost" size="sm" onClick={onClose} className="text-primary-foreground hover:bg-primary-foreground/20">
               Close
             </Button>
           </DialogTitle>
@@ -241,7 +241,7 @@ const CardConfigModal = ({ card, isOpen, onClose }: CardConfigModalProps) => {
 
           {/* Save Button */}
           <div className="flex justify-center pt-4">
-            <Button className="bg-yellow-600 hover:bg-yellow-700 text-white px-8 py-2 rounded-lg">
+            <Button className="bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-2 rounded-lg">
               Save
             </Button>
           </div>

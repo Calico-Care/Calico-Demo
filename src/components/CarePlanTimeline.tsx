@@ -42,7 +42,7 @@ const mockTimelineData = {
     { metric: "Blood Pressure", current: "128/82", trend: "improving", change: "-5%", color: "text-green-600" },
     { metric: "Weight", current: "165 lbs", trend: "stable", change: "+0.2%", color: "text-blue-600" },
     { metric: "Mood Score", current: "8.2/10", trend: "improving", change: "+12%", color: "text-green-600" },
-    { metric: "Activity Level", current: "6,420 steps", trend: "declining", change: "-8%", color: "text-orange-600" }
+    { metric: "Activity Level", current: "6,420 steps", trend: "declining", change: "-8%", color: "text-destructive" }
   ],
   dailyTimeline: [
     {
@@ -176,7 +176,7 @@ const CarePlanTimeline = ({ selectedSenior, onBack }: CarePlanTimelineProps) => 
                   <div className="text-sm text-gray-500">Day Streak</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-orange-600">{mockTimelineData.weekSummary.missed}</div>
+                  <div className="text-2xl font-bold text-destructive">{mockTimelineData.weekSummary.missed}</div>
                   <div className="text-sm text-gray-500">Missed This Week</div>
                 </div>
               </div>
@@ -287,7 +287,7 @@ const CarePlanTimeline = ({ selectedSenior, onBack }: CarePlanTimelineProps) => 
                       alert.severity === "positive" 
                         ? "bg-green-50 border-green-400" 
                         : alert.severity === "medium"
-                        ? "bg-orange-50 border-orange-400"
+                        ? "bg-accent/10 border-accent"
                         : "bg-red-50 border-red-400"
                     }`}
                   >

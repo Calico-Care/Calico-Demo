@@ -44,11 +44,11 @@ const AskCaliPage = () => {
     },
     {
       id: "companion",
-      icon: MessageSquare,
+      icon: (props: any) => <img src="/Calico%20Icon@4x.png" alt="Cali" {...props} />,
       title: "Cali Health Companion", 
       description: "Enable seniors to chat with Cali about health, wellness, and daily life",
       status: "Active",
-      color: "bg-purple-500"
+      color: "bg-green-500"
     },
     {
       id: "reports",
@@ -56,7 +56,7 @@ const AskCaliPage = () => {
       title: "AI Health Reports",
       description: "Cali analyzes trends, check-ins, and notes to produce clear, shareable reports",
       status: "Active", 
-      color: "bg-orange-500"
+      color: "bg-red-500"
     }
   ];
 
@@ -403,9 +403,7 @@ const AskCaliPage = () => {
         {/* Header Section */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center">
-              <span className="text-orange-600 text-xl">🐱</span>
-            </div>
+            <img src="/Calico%20Icon@4x.png" alt="Cali Logo" className="w-12 h-12" />
             <div>
               <h1 className="text-3xl font-bold text-foreground">Ask Cali</h1>
               <p className="text-muted-foreground">AI-Powered Healthcare Intelligence Platform</p>
@@ -467,7 +465,7 @@ const AskCaliPage = () => {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-orange-600">156</div>
+              <div className="text-2xl font-bold text-primary">156</div>
               <div className="text-sm text-muted-foreground">Reminders Sent</div>
             </CardContent>
           </Card>

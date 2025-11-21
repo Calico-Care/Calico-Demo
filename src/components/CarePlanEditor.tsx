@@ -44,7 +44,7 @@ const cardLibrary = {
     { id: "bp", name: "Blood Pressure Check", icon: Heart, color: "bg-red-500", category: "monitoring", description: "Daily blood pressure readings with trend tracking", difficulty: "Easy", duration: "2 min" },
     { id: "weight", name: "Weight Tracking", icon: Weight, color: "bg-blue-500", category: "monitoring", description: "Monitor weight changes and patterns", difficulty: "Easy", duration: "1 min" },
     { id: "mood", name: "Mood Assessment", icon: Brain, color: "bg-purple-500", category: "monitoring", description: "Track emotional wellbeing daily", difficulty: "Easy", duration: "3 min" },
-    { id: "symptoms", name: "Symptom Check", icon: MessageCircle, color: "bg-orange-500", category: "monitoring", description: "Report any concerning symptoms", difficulty: "Easy", duration: "5 min" },
+    { id: "symptoms", name: "Symptom Check", icon: MessageCircle, color: "bg-red-500", category: "monitoring", description: "Report any concerning symptoms", difficulty: "Easy", duration: "5 min" },
   ],
   "Physical Activity": [
     { id: "walking", name: "Daily Walk", icon: Activity, color: "bg-green-500", category: "activity", description: "Gentle walking exercise routine", difficulty: "Easy", duration: "15 min" },

@@ -176,27 +176,27 @@ const SeniorsTable = () => {
                 </TableCell>
                 <TableCell>
                   <Button variant="ghost" size="sm">
-                    <BarChart3 className="w-4 h-4 text-blue-500" />
+                    <BarChart3 className="w-4 h-4 text-primary" />
                   </Button>
                 </TableCell>
                 <TableCell>
                   <Button variant="ghost" size="sm">
-                    <FileText className="w-4 h-4 text-blue-500" />
+                    <FileText className="w-4 h-4 text-primary" />
                   </Button>
                 </TableCell>
                 <TableCell>
                   <Button variant="ghost" size="sm">
-                    <FileText className="w-4 h-4 text-blue-500" />
+                    <FileText className="w-4 h-4 text-primary" />
                   </Button>
                 </TableCell>
                 <TableCell>
                   <Button variant="ghost" size="sm">
-                    <RefreshCw className="w-4 h-4 text-blue-500" />
+                    <RefreshCw className="w-4 h-4 text-primary" />
                   </Button>
                 </TableCell>
                 <TableCell>
                   <Button variant="ghost" size="sm">
-                    <Heart className="w-4 h-4 text-blue-500" />
+                    <Heart className="w-4 h-4 text-primary" />
                   </Button>
                 </TableCell>
               </TableRow>
