@@ -44,7 +44,7 @@ const AskCaliPage = () => {
     },
     {
       id: "companion",
-      icon: (props: any) => <img src="/Calico%20Icon@4x.png" alt="Cali" {...props} />,
+      icon: (props: any) => <img src={`${import.meta.env.BASE_URL}Calico%20Icon@4x.png`} alt="Cali" {...props} />,
       title: "Cali Health Companion", 
       description: "Enable seniors to chat with Cali about health, wellness, and daily life",
       status: "Active",
@@ -403,7 +403,7 @@ const AskCaliPage = () => {
         {/* Header Section */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-4">
-            <img src="/Calico%20Icon@4x.png" alt="Cali Logo" className="w-12 h-12" />
+            <img src={`${import.meta.env.BASE_URL}Calico%20Icon@4x.png`} alt="Cali Logo" className="w-12 h-12" />
             <div>
               <h1 className="text-3xl font-bold text-foreground">Ask Cali</h1>
               <p className="text-muted-foreground">AI-Powered Healthcare Intelligence Platform</p>

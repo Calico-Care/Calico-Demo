@@ -122,7 +122,7 @@ const Login = () => {
           <Card className="w-full p-8 bg-black/40 backdrop-blur-xl border-white/10 shadow-2xl">
             <div className="text-center mb-8">
               <div className="flex justify-center mb-4">
-                <img src="/Calico.Care%20W%20Logo.png" alt="Calico Care Logo" className="h-20" />
+                <img src={`${import.meta.env.BASE_URL}Calico.Care%20W%20Logo.png`} alt="Calico Care Logo" className="h-20" />
               </div>
               <p className="text-gray-400">
                 Sign in to access your AI-powered elder care management platform

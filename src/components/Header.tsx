@@ -22,7 +22,7 @@ const Header = ({ currentPage, onPageChange, onLogout }: HeaderProps) => {
           <div className="flex items-center space-x-8">
             {/* Brand Logo */}
             <div className="flex items-center space-x-3">
-              <img src="/Calico.Care%20B%20Logo.png" alt="Calico Care Logo" className="h-10" />
+              <img src={`${import.meta.env.BASE_URL}Calico.Care%20B%20Logo.png`} alt="Calico Care Logo" className="h-10" />
             </div>
             
             {/* Navigation Menu */}
@@ -56,7 +56,7 @@ const Header = ({ currentPage, onPageChange, onLogout }: HeaderProps) => {
                 className={`flex items-center ${currentPage === "vapi" ? "text-primary font-medium" : "text-muted-foreground hover:text-foreground"}`}
                 onClick={() => onPageChange("vapi")}
               >
-                <img src="/Calico%20Icon@4x.png" alt="Cali Logo" className="w-8 h-8 -mr-1" />
+                <img src={`${import.meta.env.BASE_URL}Calico%20Icon@4x.png`} alt="Cali Logo" className="w-8 h-8 -mr-1" />
                 <span>Cali Assistant</span>
               </Button>
               <Button 

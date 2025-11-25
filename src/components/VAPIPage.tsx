@@ -481,7 +481,7 @@ const VAPIPage = () => {
         {/* Header */}
         <div className="flex items-center justify-center">
           <div className="flex items-center gap-4">
-            <img src="/Calico%20Icon@4x.png" alt="Cali Logo" className="w-12 h-12" />
+            <img src={`${import.meta.env.BASE_URL}Calico%20Icon@4x.png`} alt="Cali Logo" className="w-12 h-12" />
             <div>
               <h1 className="text-3xl font-bold text-foreground">
                 Cali Assistant
