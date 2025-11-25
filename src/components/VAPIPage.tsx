@@ -17,6 +17,10 @@ import {
   Loader2,
   RefreshCw,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { Button } from "@/components/ui/button";
@@ -211,6 +215,7 @@ const VAPIPage = () => {
   const [callDetailsCall, setCallDetailsCall] = useState<VAPICall | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const patientsQuery = useQuery({
     queryKey: ["patients"],
@@ -571,15 +576,20 @@ const VAPIPage = () => {
               </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)] lg:gap-6">
+        <div className={`grid grid-cols-1 gap-4 transition-all duration-300 ease-in-out ${isSidebarOpen ? "lg:grid-cols-[320px_minmax(0,1fr)]" : "lg:grid-cols-[0px_minmax(0,1fr)]"} lg:gap-6`}>
           {/* Patient List Sidebar */}
-          <div className="lg:col-span-1">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle>Patients</CardTitle>
-                <CardDescription>
-                  Select a patient to manage their calls
-                </CardDescription>
+          <div className={`lg:col-span-1 ${!isSidebarOpen ? "hidden lg:block overflow-hidden invisible" : ""}`}>
+            <Card className="h-full">
+              <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+                <div>
+                  <CardTitle>Patients</CardTitle>
+                  <CardDescription>
+                    Select a patient
+                  </CardDescription>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(false)} className="h-8 w-8">
+                  <PanelLeftClose className="h-4 w-4" />
+                </Button>
               </CardHeader>
               <CardContent className="space-y-4 text-sm">
                 <div className="relative max-w-sm">
@@ -639,7 +649,20 @@ const VAPIPage = () => {
           </div>
 
           {/* Main Content Area */}
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 min-w-0">
+            {!isSidebarOpen && (
+              <div className="mb-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="gap-2"
+                >
+                  <PanelLeftOpen className="h-4 w-4" />
+                  Show Patients
+                </Button>
+              </div>
+            )}
             {selectedPatient ? (
               <div className="space-y-5">
                 <div className="grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(380px,1.5fr)] items-start">
