@@ -58,7 +58,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
-import { loadPrompt } from "@/lib/prompts";
+import { loadPrompt, availablePrompts } from "@/lib/prompts";
 import {
   Table,
   TableBody,
@@ -160,38 +160,23 @@ type PromptTemplateConfig = {
   template: string;
 };
 
-const PROMPT_TEMPLATES: PromptTemplateConfig[] = [
-  {
-    id: "standard-health-check",
-    name: "Standard Health Check",
-    description: "General wellness check focused on symptoms, meds, and follow ups.",
-    template: loadPrompt("Standard_health_check"),
-  },
-  {
-    id: "daily-wellness-check",
-    name: "Daily Wellness Check",
-    description: "Lightweight daily touchpoint to understand overall wellbeing.",
-    template: loadPrompt("Daily_wellness_check"),
-  },
-  {
-    id: "medication-reminder-review",
-    name: "Medication Reminder & Review",
-    description: "Ensures adherence while capturing any side effects or barriers.",
-    template: loadPrompt("Medication_reminder_review"),
-  },
-  {
-    id: "symptom-monitoring",
-    name: "Symptom Monitoring",
-    description: "Deeper dive into symptom trends and escalation needs.",
-    template: loadPrompt("Symptom_monitoring"),
-  },
-  {
-    id: "weekly-progress-review",
-    name: "Weekly Progress Review",
-    description: "Summarizes the week, reinforces care plans, and plans next steps.",
-    template: loadPrompt("Weekly_progress_review"),
-  },
-].filter((template) => Boolean(template.template));
+const KNOWN_DESCRIPTIONS: Record<string, string> = {
+  "Standard_health_check": "General wellness check focused on symptoms, meds, and follow ups.",
+  "Daily_wellness_check": "Lightweight daily touchpoint to understand overall wellbeing.",
+  "Medication_reminder_review": "Ensures adherence while capturing any side effects or barriers.",
+  "Symptom_monitoring": "Deeper dive into symptom trends and escalation needs.",
+  "Weekly_progress_review": "Summarizes the week, reinforces care plans, and plans next steps.",
+  "COPD_Assesment_Test": "Assess the impact of COPD on a patient's life."
+};
+
+const PROMPT_TEMPLATES: PromptTemplateConfig[] = availablePrompts
+  .map((filename) => ({
+    id: filename.toLowerCase().replace(/_/g, "-"),
+    name: filename.replace(/_/g, " "),
+    description: KNOWN_DESCRIPTIONS[filename] || "Custom prompt template",
+    template: loadPrompt(filename),
+  }))
+  .filter((template) => Boolean(template.template));
 
 const VAPIPage = () => {
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);

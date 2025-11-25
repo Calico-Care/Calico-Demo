@@ -24,6 +24,8 @@ export function loadPrompt(filename: string): string {
   return prompt ?? "";
 }
 
+export const availablePrompts = Object.keys(promptCache);
+
 export function replacePromptVariables(prompt: string, patient: Patient): string {
   const dateOfBirth = patient.dateOfBirth instanceof Date
     ? patient.dateOfBirth
