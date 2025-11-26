@@ -220,6 +220,18 @@ export const vapiRepository = {
     return mapPrompt(data);
   },
 
+  async updatePrompt(id: string, updates: { name?: string; prompt?: string }): Promise<VAPIPrompt> {
+    const { data, error } = await supabase
+      .from("vapi_prompts")
+      .update(updates)
+      .eq("id", id)
+      .select("*")
+      .single<PromptRow>();
+
+    if (error) throw new Error(error.message);
+    return mapPrompt(data);
+  },
+
   async deletePrompt(id: string): Promise<void> {
     const { error } = await supabase
       .from("vapi_prompts")
@@ -280,6 +292,42 @@ export const vapiRepository = {
     const { data, error } = await supabase
       .from("vapi_call_schedules")
       .update({ is_active: false })
+      .eq("id", id)
+      .select("*")
+      .single<ScheduleRow>();
+
+    if (error) throw new Error(error.message);
+    return mapSchedule(data);
+  },
+
+  async listDueSchedules(): Promise<VAPICallSchedule[]> {
+    const now = new Date();
+    const { data, error } = await supabase
+      .from("vapi_call_schedules")
+      .select("*")
+      .eq("is_active", true)
+      .eq("type", "one-time")
+      .lte("scheduled_time", now.toISOString());
+
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(mapSchedule);
+  },
+
+  async updateSchedule(id: string, updates: Partial<CreateSchedulePayload> & { lastExecutedAt?: Date }): Promise<VAPICallSchedule> {
+    const patch: Record<string, unknown> = {};
+    if (updates.scheduledTime !== undefined) {
+      patch.scheduled_time = updates.scheduledTime ? updates.scheduledTime.toISOString() : null;
+    }
+    if (updates.recurrenceEndDate !== undefined) {
+      patch.recurrence_end_date = updates.recurrenceEndDate ? updates.recurrenceEndDate.toISOString() : null;
+    }
+    if (updates.lastExecutedAt !== undefined) {
+      patch.last_executed_at = updates.lastExecutedAt.toISOString();
+    }
+    
+    const { data, error } = await supabase
+      .from("vapi_call_schedules")
+      .update(patch)
       .eq("id", id)
       .select("*")
       .single<ScheduleRow>();

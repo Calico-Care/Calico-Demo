@@ -189,7 +189,7 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-gray-100">
       <div className="max-w-7xl mx-auto p-6 space-y-6">
-        <div className="mt-6">
+        <div className="mt-6 text-center">
           <h2 className="text-2xl font-bold mb-2">Program Metrics</h2>
           <p className="text-muted-foreground">Track overall program performance and alerts</p>
           {patientsError ? (

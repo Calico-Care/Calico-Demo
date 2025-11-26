@@ -339,19 +339,19 @@ const SettingsPage = () => {
         <Badge variant="destructive" className="text-lg px-3 py-1">23 Pending</Badge>
       </div>
 
-      <Tabs defaultValue="senior-enrollment" className="w-full">
+      <Tabs defaultValue="patient-enrollment" className="w-full">
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="senior-enrollment">Senior Enrollment</TabsTrigger>
+          <TabsTrigger value="patient-enrollment">Patient Enrollment</TabsTrigger>
           <TabsTrigger value="caregiver">Caregivers</TabsTrigger>
-          <TabsTrigger value="senior-general">Senior Invitations</TabsTrigger>
+          <TabsTrigger value="patient-general">Patient Invitations</TabsTrigger>
           <TabsTrigger value="referrals">Referrals</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="senior-enrollment" className="mt-6">
+        <TabsContent value="patient-enrollment" className="mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>Pending Senior Enrollment Invitations</CardTitle>
-              <CardDescription>Seniors who have been invited but not yet enrolled</CardDescription>
+              <CardTitle>Pending Patient Enrollment Invitations</CardTitle>
+              <CardDescription>Patients who have been invited but not yet enrolled</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -394,14 +394,14 @@ const SettingsPage = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="senior-general" className="mt-6">
+        <TabsContent value="patient-general" className="mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>General Senior Invitations</CardTitle>
-              <CardDescription>All senior invitation activity</CardDescription>
+              <CardTitle>General Patient Invitations</CardTitle>
+              <CardDescription>All patient invitation activity</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground">View all senior invitation history here</p>
+              <p className="text-muted-foreground">View all patient invitation history here</p>
             </CardContent>
           </Card>
         </TabsContent>

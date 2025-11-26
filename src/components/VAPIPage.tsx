@@ -21,6 +21,7 @@ import {
   ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
+  X,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { Button } from "@/components/ui/button";
@@ -127,7 +128,12 @@ const isEndOfCallReport = (
 
   return "conversationOutcome" in value && "summary" in value;
 };
-const getCallStatusBadge = (status: VAPICall["status"]) => {
+
+const getCallStatusBadge = (call: VAPICall) => {
+  // If the call has analysis data (summary or report), show as completed
+  const hasAnalysisData = call.analysis?.summary || isEndOfCallReport(call.analysis?.structuredData);
+  const effectiveStatus = hasAnalysisData && call.status === "pending" ? "completed" : call.status;
+  
   const statusConfig = {
     pending: {
       label: "Pending",
@@ -149,7 +155,7 @@ const getCallStatusBadge = (status: VAPICall["status"]) => {
       className: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
     },
   };
-  const config = statusConfig[status];
+  const config = statusConfig[effectiveStatus];
   return <Badge className={config.className}>{config.label}</Badge>;
 };
 
@@ -236,6 +242,34 @@ const VAPIPage = () => {
     enabled: Boolean(selectedPatientId),
   });
 
+  // Poll for and execute scheduled calls every 30 seconds
+  useEffect(() => {
+    const executeScheduledCalls = async () => {
+      try {
+        const result = await vapiService.executeDueSchedules();
+        if (result.executed > 0) {
+          // Refresh calls and schedules after executing
+          queryClient.invalidateQueries({ queryKey: ["vapi", "calls"] });
+          queryClient.invalidateQueries({ queryKey: ["vapi", "schedules"] });
+          toast({
+            title: "Scheduled Call Initiated",
+            description: `${result.executed} scheduled call(s) have been initiated.`,
+          });
+        }
+      } catch (error) {
+        console.error("Failed to execute scheduled calls:", error);
+      }
+    };
+
+    // Execute immediately on mount
+    executeScheduledCalls();
+
+    // Then poll every 30 seconds
+    const intervalId = setInterval(executeScheduledCalls, 30000);
+
+    return () => clearInterval(intervalId);
+  }, [queryClient, toast]);
+
   const prompts = promptsQuery.data ?? [];
   const schedules = schedulesQuery.data ?? [];
   const callHistory = callsQuery.data ?? [];
@@ -292,7 +326,6 @@ const VAPIPage = () => {
       await queryClient.invalidateQueries({
         queryKey: ["vapi", "prompts", selectedPatient.id],
       });
-      setIsCreatePromptOpen(false);
       toast({
         title: "Prompt Created",
         description: `Prompt "${name}" has been created for ${selectedPatient.firstName} ${selectedPatient.lastName}.`,
@@ -421,6 +454,28 @@ const VAPIPage = () => {
     }
   };
 
+  const handleDeleteSchedule = async (scheduleId: string) => {
+    if (!selectedPatient) return;
+
+    try {
+      await vapiService.cancelSchedule(scheduleId);
+      await queryClient.invalidateQueries({
+        queryKey: ["vapi", "schedules", selectedPatient.id],
+      });
+      toast({
+        title: "Schedule Cancelled",
+        description: "The scheduled call has been cancelled.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description:
+          error instanceof Error ? error.message : "Failed to cancel schedule",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleAddPresetPrompt = async (name: string, template: string) => {
     if (!selectedPatient) return;
     setPresetInFlight(name);
@@ -465,6 +520,30 @@ const VAPIPage = () => {
     }
   };
 
+  const handleRenamePrompt = async (promptId: string, newName: string) => {
+    if (!selectedPatient) return;
+
+    try {
+      await vapiRepository.updatePrompt(promptId, { name: newName });
+      await queryClient.invalidateQueries({
+        queryKey: ["vapi", "prompts", selectedPatient.id],
+      });
+      toast({
+        title: "Prompt Renamed",
+        description: `Prompt has been renamed to "${newName}".`,
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to rename prompt",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Please try renaming the prompt again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="w-full p-4 sm:p-6 space-y-5 sm:space-y-6">
@@ -498,14 +577,19 @@ const VAPIPage = () => {
                           Set up automated outreach for {selectedPatient.firstName} {selectedPatient.lastName}.
                         </DialogDescription>
                       </DialogHeader>
-                      {schedules.length === 0 ? (
+                      {activeSchedules.length === 0 ? (
                         <div className="text-center py-10 border-2 border-dashed border-gray-200 rounded-lg text-sm text-gray-500">
                           No scheduled calls yet.
                         </div>
                       ) : (
                         <div className="space-y-3">
-                          {schedules.map((schedule) => (
-                            <ScheduleCard key={schedule.id} schedule={schedule} prompts={prompts} />
+                          {activeSchedules.map((schedule) => (
+                            <ScheduleCard
+                              key={schedule.id}
+                              schedule={schedule}
+                              prompts={prompts}
+                              onDelete={handleDeleteSchedule}
+                            />
                           ))}
                         </div>
                       )}
@@ -698,7 +782,7 @@ const VAPIPage = () => {
                           <div>
                             <CardTitle>Call History</CardTitle>
                             <CardDescription>
-                              Tap to view recent calls and refresh reports
+                              Tap a call to view details and sync the latest report
                             </CardDescription>
                           </div>
                           <CollapsibleTrigger asChild>
@@ -715,9 +799,12 @@ const VAPIPage = () => {
                             <CallHistoryTable
                               calls={callHistory}
                               prompts={prompts}
-                              onSelectCall={(call) => setCallDetailsCall(call)}
-                              onRefresh={handleRefreshCallReport}
-                              refreshingCallId={refreshingCallId}
+                              onSelectCall={(call) => {
+                                setCallDetailsCall(call);
+                                if (call.providerCallId) {
+                                  handleRefreshCallReport(call.id);
+                                }
+                              }}
                             />
                           </CardContent>
                         </CollapsibleContent>
@@ -728,30 +815,9 @@ const VAPIPage = () => {
                   <div className="space-y-5">
                     <Card>
                       <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <CardTitle className="text-lg">Voice Prompts</CardTitle>
-                            <CardDescription>Manage automated call scripts</CardDescription>
-                          </div>
-                          <Dialog open={isCreatePromptOpen} onOpenChange={setIsCreatePromptOpen}>
-                            <DialogTrigger asChild>
-                              <Button variant="outline" size="sm">
-                                <Plus className="w-4 h-4 mr-2" />
-                                New
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Create New Prompt</DialogTitle>
-                                <DialogDescription>
-                                  Create a custom prompt for {selectedPatient.firstName} {selectedPatient.lastName}
-                                </DialogDescription>
-                              </DialogHeader>
-                              <CreatePromptForm
-                                onSubmit={(name, template) => handleCreatePrompt(name, template)}
-                              />
-                            </DialogContent>
-                          </Dialog>
+                        <div>
+                          <CardTitle className="text-lg">Voice Prompts</CardTitle>
+                          <CardDescription>Manage automated call scripts</CardDescription>
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-5 text-sm">
@@ -759,7 +825,7 @@ const VAPIPage = () => {
                           <div className="text-center py-8 border-2 border-dashed border-gray-200 rounded-lg">
                             <Phone className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                             <p className="text-gray-500 font-medium">No prompts yet</p>
-                            <p className="text-xs text-gray-400">Add a preset or custom prompt to begin</p>
+                            <p className="text-xs text-gray-400">Add a preset prompt below to begin</p>
                           </div>
                         ) : (
                           <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
@@ -773,6 +839,7 @@ const VAPIPage = () => {
                                   setSelectedPrompt(prompt);
                                   setIsScheduleManagerOpen(true);
                                 }}
+                                onRename={handleRenamePrompt}
                                 isLoading={callingPromptId === prompt.id}
                                 isHighlighted={recentlyAddedPromptName === prompt.name}
                               />
@@ -966,67 +1033,13 @@ const isTimeBlockOccupied = (
   });
 };
 
-// Create Prompt Form Component
-const CreatePromptForm = ({
-  onSubmit,
-}: {
-  onSubmit: (name: string, template: string) => void;
-}) => {
-  const [name, setName] = useState("");
-  const [template, setTemplate] = useState("");
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (name.trim() && template.trim()) {
-      onSubmit(name.trim(), template.trim());
-      setName("");
-      setTemplate("");
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="prompt-name">Prompt Name</Label>
-        <Input
-          id="prompt-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g., Daily Wellness Check"
-          required
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="prompt-template">Prompt Template</Label>
-        <Textarea
-          id="prompt-template"
-          value={template}
-          onChange={(e) => setTemplate(e.target.value)}
-          placeholder="Enter prompt template..."
-          rows={10}
-          required
-          className="font-mono text-sm"
-        />
-        <p className="text-xs text-muted-foreground">
-          Use variables: {"{{patientName}}"}, {"{{patientAge}}"},{" "}
-          {"{{patientCondition}}"}
-        </p>
-      </div>
-      <div className="flex justify-end space-x-2 pt-4">
-        <Button type="submit" disabled={!name.trim() || !template.trim()}>
-          Create Prompt
-        </Button>
-      </div>
-    </form>
-  );
-};
-
 // Prompt Card Component
 const PromptCard = ({
   prompt,
   onDelete,
   onCallNow,
   onSchedule,
+  onRename,
   isLoading = false,
   isHighlighted = false,
 }: {
@@ -1034,9 +1047,29 @@ const PromptCard = ({
   onDelete: (id: string) => void;
   onCallNow: () => void;
   onSchedule: () => void;
+  onRename: (id: string, newName: string) => void;
   isLoading?: boolean;
   isHighlighted?: boolean;
 }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedName, setEditedName] = useState(prompt.name);
+
+  const handleSaveName = () => {
+    if (editedName.trim() && editedName !== prompt.name) {
+      onRename(prompt.id, editedName.trim());
+    }
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleSaveName();
+    } else if (e.key === "Escape") {
+      setEditedName(prompt.name);
+      setIsEditing(false);
+    }
+  };
+
   return (
     <Card
       className={`hover:shadow-md transition-all duration-300 ${
@@ -1047,9 +1080,24 @@ const PromptCard = ({
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2">
-              <h3 className="text-lg font-semibold text-gray-900">
-                {prompt.name}
-              </h3>
+              {isEditing ? (
+                <Input
+                  value={editedName}
+                  onChange={(e) => setEditedName(e.target.value)}
+                  onBlur={handleSaveName}
+                  onKeyDown={handleKeyDown}
+                  className="h-8 text-lg font-semibold"
+                  autoFocus
+                />
+              ) : (
+                <h3
+                  className="text-lg font-semibold text-gray-900 cursor-pointer hover:text-blue-600 transition-colors"
+                  onClick={() => setIsEditing(true)}
+                  title="Click to rename"
+                >
+                  {prompt.name}
+                </h3>
+              )}
               <Badge variant={prompt.isActive ? "default" : "secondary"}>
                 {prompt.isActive ? "Active" : "Inactive"}
               </Badge>
@@ -1059,6 +1107,15 @@ const PromptCard = ({
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsEditing(true)}
+              disabled={isLoading}
+              title="Rename prompt"
+            >
+              <Edit className="w-4 h-4" />
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -1120,7 +1177,9 @@ const ScheduleCallForm = ({
   ) => void;
   existingSchedules: VAPICallSchedule[];
 }) => {
-  const [promptId, setPromptId] = useState(selectedPrompt?.id || "");
+  const [selectedPromptIds, setSelectedPromptIds] = useState<string[]>(
+    selectedPrompt ? [selectedPrompt.id] : []
+  );
   const [callType, setCallType] = useState<"one-time" | "recurring">(
     "one-time"
   );
@@ -1134,20 +1193,75 @@ const ScheduleCallForm = ({
     number | undefined
   >(undefined);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [useCustomTime, setUseCustomTime] = useState(false);
+  const [customHour, setCustomHour] = useState("09");
+  const [customMinute, setCustomMinute] = useState("00");
+  const [customAmPm, setCustomAmPm] = useState<"AM" | "PM">("AM");
+  const [promptSelectorOpen, setPromptSelectorOpen] = useState(false);
 
+  // Filter to only show active prompts
+  const activePrompts = prompts.filter((p) => p.isActive);
   const timeBlocks = getTimeBlocks();
 
-  // Update promptId when selectedPrompt changes
+  // Get the selected prompts objects
+  const selectedPrompts = activePrompts.filter((p) =>
+    selectedPromptIds.includes(p.id)
+  );
+
+  // Toggle prompt selection
+  const togglePromptSelection = (promptId: string) => {
+    setSelectedPromptIds((prev) =>
+      prev.includes(promptId)
+        ? prev.filter((id) => id !== promptId)
+        : [...prev, promptId]
+    );
+  };
+
+  // Check if a specific time is in the past for today
+  const isTimeInPast = (hour: number, minute: number): boolean => {
+    if (!selectedDate) return false;
+    const now = new Date();
+    if (!isSameDay(selectedDate, now)) return false;
+    const selectedTime = new Date(selectedDate);
+    selectedTime.setHours(hour, minute, 0, 0);
+    return selectedTime <= now;
+  };
+
+  // Get the custom time as a Date object
+  const getCustomTimeAsDate = (): Date | null => {
+    if (!useCustomTime) return null;
+    let hour = parseInt(customHour, 10);
+    const minute = parseInt(customMinute, 10);
+    if (customAmPm === "PM" && hour !== 12) hour += 12;
+    if (customAmPm === "AM" && hour === 12) hour = 0;
+    const timeDate = new Date();
+    timeDate.setHours(hour, minute, 0, 0);
+    return timeDate;
+  };
+
+  // Check if custom time is valid (not in the past for today)
+  const isCustomTimeValid = (): boolean => {
+    if (!useCustomTime) return true;
+    let hour = parseInt(customHour, 10);
+    const minute = parseInt(customMinute, 10);
+    if (customAmPm === "PM" && hour !== 12) hour += 12;
+    if (customAmPm === "AM" && hour === 12) hour = 0;
+    return !isTimeInPast(hour, minute);
+  };
+
+  // Update selectedPromptIds when selectedPrompt changes
   useEffect(() => {
     if (selectedPrompt) {
-      setPromptId(selectedPrompt.id);
+      setSelectedPromptIds((prev) =>
+        prev.includes(selectedPrompt.id) ? prev : [...prev, selectedPrompt.id]
+      );
     }
   }, [selectedPrompt]);
 
   // Reset form when dialog closes
   useEffect(() => {
     if (!selectedPrompt) {
-      setPromptId("");
+      setSelectedPromptIds([]);
       setSelectedDate(undefined);
       setSelectedTimeBlock(null);
       setCallType("one-time");
@@ -1155,6 +1269,11 @@ const ScheduleCallForm = ({
       setRecurrenceEndDate(undefined);
       setSelectedDayOfWeek(undefined);
       setCalendarOpen(false);
+      setUseCustomTime(false);
+      setCustomHour("09");
+      setCustomMinute("00");
+      setCustomAmPm("AM");
+      setPromptSelectorOpen(false);
     }
   }, [selectedPrompt]);
 
@@ -1163,8 +1282,35 @@ const ScheduleCallForm = ({
 
     let scheduledDateTime: Date | undefined;
     if (callType === "one-time") {
-      if (selectedDate && selectedTimeBlock) {
+      if (selectedDate) {
         scheduledDateTime = new Date(selectedDate);
+        if (useCustomTime) {
+          let hour = parseInt(customHour, 10);
+          const minute = parseInt(customMinute, 10);
+          if (customAmPm === "PM" && hour !== 12) hour += 12;
+          if (customAmPm === "AM" && hour === 12) hour = 0;
+          scheduledDateTime.setHours(hour, minute, 0, 0);
+        } else if (selectedTimeBlock) {
+          scheduledDateTime.setHours(
+            selectedTimeBlock.getHours(),
+            selectedTimeBlock.getMinutes(),
+            0,
+            0
+          );
+          scheduledDateTime = roundTo30Minutes(scheduledDateTime);
+        }
+      }
+    } else if (callType === "recurring") {
+      // For recurring calls, store the time component in scheduledTime
+      // We'll use today's date as a base, but only the time matters
+      scheduledDateTime = new Date();
+      if (useCustomTime) {
+        let hour = parseInt(customHour, 10);
+        const minute = parseInt(customMinute, 10);
+        if (customAmPm === "PM" && hour !== 12) hour += 12;
+        if (customAmPm === "AM" && hour === 12) hour = 0;
+        scheduledDateTime.setHours(hour, minute, 0, 0);
+      } else if (selectedTimeBlock) {
         scheduledDateTime.setHours(
           selectedTimeBlock.getHours(),
           selectedTimeBlock.getMinutes(),
@@ -1173,29 +1319,21 @@ const ScheduleCallForm = ({
         );
         scheduledDateTime = roundTo30Minutes(scheduledDateTime);
       }
-    } else if (callType === "recurring" && selectedTimeBlock) {
-      // For recurring calls, store the time component in scheduledTime
-      // We'll use today's date as a base, but only the time matters
-      scheduledDateTime = new Date();
-      scheduledDateTime.setHours(
-        selectedTimeBlock.getHours(),
-        selectedTimeBlock.getMinutes(),
-        0,
-        0
-      );
-      scheduledDateTime = roundTo30Minutes(scheduledDateTime);
     }
 
-    onSubmit(
-      promptId,
-      callType,
-      scheduledDateTime,
-      callType === "recurring" ? recurrenceType : undefined,
-      recurrenceEndDate,
-      callType === "recurring" && recurrenceType === "weekly"
-        ? selectedDayOfWeek
-        : undefined
-    );
+    // Submit for each selected prompt
+    selectedPromptIds.forEach((promptId) => {
+      onSubmit(
+        promptId,
+        callType,
+        scheduledDateTime,
+        callType === "recurring" ? recurrenceType : undefined,
+        recurrenceEndDate,
+        callType === "recurring" && recurrenceType === "weekly"
+          ? selectedDayOfWeek
+          : undefined
+      );
+    });
   };
 
   const formatTimeBlock = (block: Date): string => {
@@ -1204,20 +1342,87 @@ const ScheduleCallForm = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="space-y-2">
-        <Label htmlFor="prompt">Select Prompt</Label>
-        <Select value={promptId} onValueChange={setPromptId}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select a prompt" />
-          </SelectTrigger>
-          <SelectContent>
-            {prompts.map((prompt) => (
-              <SelectItem key={prompt.id} value={prompt.id}>
+      {/* Selected Prompts Display */}
+      {selectedPrompts.length > 0 && (
+        <div className="space-y-2">
+          <Label>Selected Prompts to Schedule</Label>
+          <div className="flex flex-wrap gap-2 p-3 border rounded-md bg-muted/30">
+            {selectedPrompts.map((prompt) => (
+              <Badge
+                key={prompt.id}
+                variant="secondary"
+                className="flex items-center gap-1 px-3 py-1.5 bg-primary/10 text-primary border border-primary/20"
+              >
                 {prompt.name}
-              </SelectItem>
+                <button
+                  type="button"
+                  onClick={() => togglePromptSelection(prompt.id)}
+                  className="ml-1 hover:bg-primary/20 rounded-full p-0.5"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
             ))}
-          </SelectContent>
-        </Select>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <Label htmlFor="prompt">Select Prompts</Label>
+        {activePrompts.length === 0 ? (
+          <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
+            No active prompts available. Please create or activate a prompt first.
+          </div>
+        ) : (
+          <Popover open={promptSelectorOpen} onOpenChange={setPromptSelectorOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                role="combobox"
+                aria-expanded={promptSelectorOpen}
+                className="w-full justify-between"
+              >
+                {selectedPromptIds.length === 0
+                  ? "Select prompts..."
+                  : `${selectedPromptIds.length} prompt${selectedPromptIds.length > 1 ? "s" : ""} selected`}
+                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-full p-0" align="start">
+              <div className="max-h-64 overflow-y-auto">
+                {activePrompts.map((prompt) => {
+                  const isSelected = selectedPromptIds.includes(prompt.id);
+                  return (
+                    <div
+                      key={prompt.id}
+                      className={`flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/50 ${
+                        isSelected ? "bg-primary/5" : ""
+                      }`}
+                      onClick={() => togglePromptSelection(prompt.id)}
+                    >
+                      <div
+                        className={`w-4 h-4 border rounded flex items-center justify-center ${
+                          isSelected
+                            ? "bg-primary border-primary"
+                            : "border-gray-300"
+                        }`}
+                      >
+                        {isSelected && <Check className="h-3 w-3 text-white" />}
+                      </div>
+                      <span className="flex-1">{prompt.name}</span>
+                      <Badge
+                        variant="outline"
+                        className="text-xs bg-green-50 text-green-700 border-green-200"
+                      >
+                        Active
+                      </Badge>
+                    </div>
+                  );
+                })}
+              </div>
+            </PopoverContent>
+          </Popover>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -1266,47 +1471,133 @@ const ScheduleCallForm = ({
           </div>
 
           {selectedDate && (
-            <div className="space-y-2">
-              <Label>Select Time (30-minute blocks)</Label>
-              <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto p-2 border rounded-md">
-                {timeBlocks.map((block, index) => {
-                  const isOccupied = isTimeBlockOccupied(
-                    selectedDate,
-                    block,
-                    existingSchedules
-                  );
-                  const isSelected =
-                    selectedTimeBlock?.getHours() === block.getHours() &&
-                    selectedTimeBlock?.getMinutes() === block.getMinutes();
-
-                  return (
-                    <Button
-                      key={index}
-                      type="button"
-                      variant={isSelected ? "default" : "outline"}
-                      disabled={isOccupied}
-                      onClick={() => setSelectedTimeBlock(block)}
-                      className={`h-10 text-sm ${
-                        isOccupied
-                          ? "opacity-50 cursor-not-allowed bg-gray-100"
-                          : isSelected
-                          ? "bg-primary text-primary-foreground"
-                          : "hover:bg-gray-50"
-                      }`}
-                    >
-                      {formatTimeBlock(block)}
-                    </Button>
-                  );
-                })}
+            <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <Label className="min-w-fit">Time Selection</Label>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant={!useCustomTime ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setUseCustomTime(false);
+                      setSelectedTimeBlock(null);
+                    }}
+                  >
+                    30-min blocks
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={useCustomTime ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setUseCustomTime(true);
+                      setSelectedTimeBlock(null);
+                    }}
+                  >
+                    Custom time
+                  </Button>
+                </div>
               </div>
-              {selectedDate &&
-                timeBlocks.some((block) =>
-                  isTimeBlockOccupied(selectedDate, block, existingSchedules)
-                ) && (
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Grayed out time slots are already scheduled
-                  </p>
-                )}
+
+              {!useCustomTime ? (
+                <div className="space-y-2">
+                  <Label>Select Time (30-minute blocks)</Label>
+                  <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto p-2 border rounded-md">
+                    {timeBlocks.map((block, index) => {
+                      const isOccupied = isTimeBlockOccupied(
+                        selectedDate,
+                        block,
+                        existingSchedules
+                      );
+                      const isPast = isTimeInPast(block.getHours(), block.getMinutes());
+                      const isSelected =
+                        selectedTimeBlock?.getHours() === block.getHours() &&
+                        selectedTimeBlock?.getMinutes() === block.getMinutes();
+                      const isDisabled = isOccupied || isPast;
+
+                      return (
+                        <Button
+                          key={index}
+                          type="button"
+                          variant={isSelected ? "default" : "outline"}
+                          disabled={isDisabled}
+                          onClick={() => setSelectedTimeBlock(block)}
+                          className={`h-10 text-sm ${
+                            isDisabled
+                              ? "opacity-50 cursor-not-allowed bg-gray-100"
+                              : isSelected
+                              ? "bg-primary text-primary-foreground"
+                              : "hover:bg-gray-50"
+                          }`}
+                        >
+                          {formatTimeBlock(block)}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  {selectedDate &&
+                    timeBlocks.some((block) =>
+                      isTimeBlockOccupied(selectedDate, block, existingSchedules) ||
+                      isTimeInPast(block.getHours(), block.getMinutes())
+                    ) && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Grayed out time slots are already scheduled or in the past
+                      </p>
+                    )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label>Enter Specific Time</Label>
+                  <div className="flex items-center gap-2">
+                    <Select value={customHour} onValueChange={setCustomHour}>
+                      <SelectTrigger className="w-20">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 12 }, (_, i) => {
+                          const hour = (i + 1).toString().padStart(2, "0");
+                          return (
+                            <SelectItem key={hour} value={hour}>
+                              {hour}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-lg font-bold">:</span>
+                    <Select value={customMinute} onValueChange={setCustomMinute}>
+                      <SelectTrigger className="w-20">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 60 }, (_, i) => {
+                          const minute = i.toString().padStart(2, "0");
+                          return (
+                            <SelectItem key={minute} value={minute}>
+                              {minute}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                    <Select value={customAmPm} onValueChange={(v) => setCustomAmPm(v as "AM" | "PM")}>
+                      <SelectTrigger className="w-20">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="AM">AM</SelectItem>
+                        <SelectItem value="PM">PM</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {!isCustomTimeValid() && (
+                    <p className="text-xs text-destructive mt-2">
+                      Cannot schedule a call in the past. Please select a future time.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1356,29 +1647,107 @@ const ScheduleCallForm = ({
             </div>
           )}
 
-          <div className="space-y-2">
-            <Label>Select Time (30-minute blocks)</Label>
-            <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto p-2 border rounded-md">
-              {timeBlocks.map((block, index) => {
-                const isSelected =
-                  selectedTimeBlock?.getHours() === block.getHours() &&
-                  selectedTimeBlock?.getMinutes() === block.getMinutes();
-
-                return (
-                  <Button
-                    key={index}
-                    type="button"
-                    variant={isSelected ? "default" : "outline"}
-                    onClick={() => setSelectedTimeBlock(block)}
-                    className={`h-10 text-sm ${
-                      isSelected ? "bg-primary text-primary-foreground" : "hover:bg-gray-50"
-                    }`}
-                  >
-                    {formatTimeBlock(block)}
-                  </Button>
-                );
-              })}
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <Label className="min-w-fit">Time Selection</Label>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant={!useCustomTime ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setUseCustomTime(false);
+                    setSelectedTimeBlock(null);
+                  }}
+                >
+                  30-min blocks
+                </Button>
+                <Button
+                  type="button"
+                  variant={useCustomTime ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setUseCustomTime(true);
+                    setSelectedTimeBlock(null);
+                  }}
+                >
+                  Custom time
+                </Button>
+              </div>
             </div>
+
+            {!useCustomTime ? (
+              <div className="space-y-2">
+                <Label>Select Time (30-minute blocks)</Label>
+                <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto p-2 border rounded-md">
+                  {timeBlocks.map((block, index) => {
+                    const isSelected =
+                      selectedTimeBlock?.getHours() === block.getHours() &&
+                      selectedTimeBlock?.getMinutes() === block.getMinutes();
+
+                    return (
+                      <Button
+                        key={index}
+                        type="button"
+                        variant={isSelected ? "default" : "outline"}
+                        onClick={() => setSelectedTimeBlock(block)}
+                        className={`h-10 text-sm ${
+                          isSelected ? "bg-primary text-primary-foreground" : "hover:bg-gray-50"
+                        }`}
+                      >
+                        {formatTimeBlock(block)}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>Enter Specific Time</Label>
+                <div className="flex items-center gap-2">
+                  <Select value={customHour} onValueChange={setCustomHour}>
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 12 }, (_, i) => {
+                        const hour = (i + 1).toString().padStart(2, "0");
+                        return (
+                          <SelectItem key={hour} value={hour}>
+                            {hour}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  <span className="text-lg font-bold">:</span>
+                  <Select value={customMinute} onValueChange={setCustomMinute}>
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 60 }, (_, i) => {
+                        const minute = i.toString().padStart(2, "0");
+                        return (
+                          <SelectItem key={minute} value={minute}>
+                            {minute}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  <Select value={customAmPm} onValueChange={(v) => setCustomAmPm(v as "AM" | "PM")}>
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="AM">AM</SelectItem>
+                      <SelectItem value="PM">PM</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -1413,17 +1782,17 @@ const ScheduleCallForm = ({
         <Button
           type="submit"
           disabled={
-            !promptId ||
+            selectedPromptIds.length === 0 ||
             (callType === "one-time" &&
-              (!selectedDate || !selectedTimeBlock)) ||
+              (!selectedDate || (!selectedTimeBlock && !useCustomTime) || (useCustomTime && !isCustomTimeValid()))) ||
             (callType === "recurring" &&
               ((recurrenceType === "weekly" &&
                 selectedDayOfWeek === undefined) ||
-                !selectedTimeBlock))
+                (!selectedTimeBlock && !useCustomTime)))
           }
         >
           <Calendar className="w-4 h-4 mr-2" />
-          Schedule Call
+          Schedule {selectedPromptIds.length > 1 ? `${selectedPromptIds.length} Calls` : "Call"}
         </Button>
       </div>
     </form>
@@ -1434,10 +1803,13 @@ const ScheduleCallForm = ({
 const ScheduleCard = ({
   schedule,
   prompts,
+  onDelete,
 }: {
   schedule: VAPICallSchedule;
   prompts: VAPIPrompt[];
+  onDelete: (scheduleId: string) => void;
 }) => {
+  const [isDeleting, setIsDeleting] = useState(false);
   const prompt = prompts.find((p) => p.id === schedule.promptId);
 
   const getDayName = (dayOfWeek: number): string => {
@@ -1491,11 +1863,20 @@ const ScheduleCard = ({
     return "Immediate call";
   };
 
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await onDelete(schedule.id);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <Card>
       <CardContent className="pt-6">
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
               <h3 className="font-semibold text-gray-900">
                 {prompt?.name || "Unknown Prompt"}
@@ -1506,6 +1887,21 @@ const ScheduleCard = ({
             </div>
             <p className="text-sm text-gray-500">{formatScheduleInfo()}</p>
           </div>
+          {schedule.isActive && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="text-gray-400 hover:text-red-500 hover:bg-red-50"
+            >
+              {isDeleting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <X className="h-4 w-4" />
+              )}
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -1517,14 +1913,10 @@ const CallHistoryTable = ({
   calls,
   prompts,
   onSelectCall,
-  onRefresh,
-  refreshingCallId,
 }: {
   calls: VAPICall[];
   prompts: VAPIPrompt[];
   onSelectCall: (call: VAPICall) => void;
-  onRefresh: (id: string) => void;
-  refreshingCallId: string | null;
 }) => {
   if (calls.length === 0) {
     return (
@@ -1545,7 +1937,7 @@ const CallHistoryTable = ({
   });
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>
@@ -1581,37 +1973,12 @@ const CallHistoryTable = ({
                   </div>
                   <p className="text-xs text-gray-500">{callDateLabel}</p>
                 </TableCell>
-                <TableCell>{getCallStatusBadge(call.status)}</TableCell>
+                <TableCell>{getCallStatusBadge(call)}</TableCell>
                 <TableCell>{durationLabel}</TableCell>
                 <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    {call.providerCallId && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onRefresh(call.id);
-                        }}
-                        disabled={refreshingCallId === call.id}
-                      >
-                        {refreshingCallId === call.id ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Syncing
-                          </>
-                        ) : (
-                          <>
-                            <RefreshCw className="w-4 h-4 mr-2" />
-                            Sync report
-                          </>
-                        )}
-                      </Button>
-                    )}
-                    <span className="text-xs text-gray-500">
-                      Tap for details
-                    </span>
-                  </div>
+                  <span className="text-xs text-gray-500">
+                    Tap for details
+                  </span>
                 </TableCell>
               </TableRow>
             );
@@ -1662,7 +2029,7 @@ const CallHistoryDetails = ({
             {completedLabel && durationLabel && ` • Duration: ${durationLabel}`}
           </p>
         </div>
-        <div className="flex items-center gap-2">{getCallStatusBadge(call.status)}</div>
+        <div className="flex items-center gap-2">{getCallStatusBadge(call)}</div>
       </div>
 
       {call.analysis?.summary && (

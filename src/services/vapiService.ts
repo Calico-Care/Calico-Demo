@@ -511,8 +511,7 @@ export const vapiService = {
 
   /**
    * Schedule a call (one-time or recurring)
-   * NOTE: For demo purposes, this only creates a local schedule record.
-   * Actual scheduling is disabled - only "Call Now" initiates real calls.
+   * For one-time calls, the call will be initiated when the scheduled time arrives.
    */
   async scheduleCall(params: ScheduleCallParams): Promise<VAPICallSchedule> {
     const patient = await patientRepository.getById(params.patientId);
@@ -532,6 +531,50 @@ export const vapiService = {
       dayOfWeek: params.dayOfWeek,
       dayOfMonth: params.dayOfMonth,
     });
+  },
+
+  /**
+   * Execute all due scheduled calls
+   * This should be called periodically to check for and initiate scheduled calls
+   */
+  async executeDueSchedules(): Promise<{ executed: number; failed: number }> {
+    const dueSchedules = await vapiRepository.listDueSchedules();
+    let executed = 0;
+    let failed = 0;
+
+    for (const schedule of dueSchedules) {
+      try {
+        const patient = await patientRepository.getById(schedule.patientId);
+        if (!patient || !patient.phone) {
+          console.warn(`Skipping schedule ${schedule.id}: patient not found or no phone`);
+          failed++;
+          continue;
+        }
+
+        const e164Phone = patient.phone.replace(/\D/g, "");
+        const formattedPhone = e164Phone.length === 10 ? `+1${e164Phone}` : 
+                               e164Phone.length === 11 && e164Phone.startsWith("1") ? `+${e164Phone}` : 
+                               `+1${e164Phone}`;
+
+        await this.createCall({
+          patientId: schedule.patientId,
+          promptId: schedule.promptId,
+          phoneNumber: formattedPhone,
+        });
+
+        // Deactivate one-time schedules after execution
+        if (schedule.type === "one-time") {
+          await vapiRepository.deactivateSchedule(schedule.id);
+        }
+
+        executed++;
+      } catch (error) {
+        console.error(`Failed to execute schedule ${schedule.id}:`, error);
+        failed++;
+      }
+    }
+
+    return { executed, failed };
   },
 
   /**
